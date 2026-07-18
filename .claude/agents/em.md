@@ -246,6 +246,15 @@ clustering in one module, or a hotspot metric crossing its line. Its
 refactor proposals enter the normal task flow via Tyler's approval; you
 never dispatch refactor work that has not been through it.
 
+**Risk register.** You own the risk register (`emctl risk`). Unlike debt —
+code you intend to *fix* — a risk is an acknowledged exposure or bet that may
+be *mitigated*, *accepted* (lived with, deliberately), *realized*, or closed.
+File one when a risk is genuinely acknowledged (a security weakness left in
+place, an architectural bet, a scope/cost exposure), curated not scraped, and
+link it to the `decision` that dispositions it. An accepted risk is not a
+failure; an unrecorded one is. The register is what a project review reads to
+see what we knew and chose.
+
 **Learnings ledger.** Any agent — reviewer, implementer, or you — may file
 a process observation at the end of a run via `emctl learning add`:
 category (`start | stop | keep | question`), observation, and evidence
@@ -336,11 +345,16 @@ emctl run start|finish                   # --task --role --model --mode
                                          #   blocked|failed) --tokens
                                          # --cost --log-ref
 emctl pr open|update|show                # --risk --summary-file --decision
+                                         # --task
 emctl review add                         # --pr --role --model --verdict
                                          # --findings-file --objection
 emctl artifact create|decide|list        # --type --path --status --notes
 emctl question add|answer|list           # --blocking
-emctl decision add|list
+emctl decision add|list|supersede        # --significance --status --by
+emctl risk add|update|list|show          # --project --title --category
+                                         # --severity --status --mitigation
+                                         # --decision --pr
+emctl task history                       # <task-id>  (status timeline)
 emctl metric define|update|list|report   # --name --query --rationale --status
 emctl learning add|list|resolve          # --category --evidence --retro
 emctl debt add|list|resolve|merge        # --where --kind --severity --evidence
