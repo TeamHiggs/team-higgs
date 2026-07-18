@@ -1,6 +1,7 @@
 # Changelog
 
-What's new, improved, and fixed, newest first.
+What's new, improved, and fixed, newest first. Entries are grouped under
+**New**, **Improved**, and **Fixed**.
 
 ## 2026-07-18
 
@@ -12,12 +13,4 @@ What's new, improved, and fixed, newest first.
   `status` overview and a `migrate` command that sets up the database. Add
   `--json` to any command for machine-readable output.
 <!-- PR #5 · BOOTSTRAP task 1 · docs/prd/emctl.md -->
-
-### Improved
-
-_Nothing yet._
-
-### Fixed
-
-_Nothing yet._
 </content>
