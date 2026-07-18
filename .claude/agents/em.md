@@ -339,7 +339,7 @@ not a reason to write SQL directly.
 emctl status                             # global summary
 emctl project create|show|list
 emctl task create|update|show|list       # --status --role --tier --prd-ref
-                                         # --depends-on --blocked-reason
+                                         # --depends-on --blocked-reason --by
 emctl run start|finish                   # --task --role --model --mode
                                          # --outcome (done|negative-result|
                                          #   blocked|failed) --tokens
@@ -350,11 +350,12 @@ emctl review add                         # --pr --role --model --verdict
                                          # --findings-file --objection
 emctl artifact create|decide|list        # --type --path --status --notes
 emctl question add|answer|list           # --blocking
-emctl decision add|list|supersede        # --significance --status --by
+emctl decision add|list                  # --significance --status
+emctl decision supersede <old> --by <new>
 emctl risk add|update|list|show          # --project --title --category
                                          # --severity --status --mitigation
                                          # --decision --pr
-emctl task history                       # <task-id>  (status timeline)
+emctl task history <task-id>             # status-change timeline
 emctl metric define|update|list|report   # --name --query --rationale --status
 emctl learning add|list|resolve          # --category --evidence --retro
 emctl debt add|list|resolve|merge        # --where --kind --severity --evidence
