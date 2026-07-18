@@ -29,7 +29,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Iterable
 from typing import Any
+
+# Lines longer than this are skipped before parsing: a pathological line (e.g.
+# megabytes of nested brackets) is never handed to json.loads. 2 MiB is far
+# above any real per-message transcript line.
+_MAX_LINE_CHARS = 2 * 1024 * 1024
 
 # API usage key -> emctl/DB column name.
 _USAGE_KEYS = {
@@ -52,22 +58,27 @@ def _as_int(value: Any) -> int:
     return 0
 
 
-def aggregate(lines: list[str]) -> dict[str, Any]:
+def aggregate(lines: Iterable[str]) -> dict[str, Any]:
     """Sum the four token types over ``lines``; surface the model if present.
 
-    Tolerant by construction: a line that is not JSON, is not an object, or
-    carries no ``message.usage`` mapping is skipped rather than raised on.
+    Tolerant by construction: a line that is over-long, is not JSON, is not an
+    object, or carries no ``message.usage`` mapping is skipped rather than
+    raised on. ``RecursionError`` from deeply nested JSON is caught too, so no
+    single line can ever crash the aggregation (the "never raises on a
+    malformed transcript" contract).
     """
     totals = {col: 0 for col in _USAGE_KEYS.values()}
     model: str | None = None
 
-    for line in lines:
-        line = line.strip()
+    for raw in lines:
+        if len(raw) > _MAX_LINE_CHARS:
+            continue
+        line = raw.strip()
         if not line:
             continue
         try:
             obj = json.loads(line)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             continue
         if not isinstance(obj, dict):
             continue
@@ -97,14 +108,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with open(args.transcript, encoding="utf-8", errors="replace") as handle:
-            lines = handle.readlines()
+            # Stream line-by-line so a runaway file is not slurped into memory
+            # at once; aggregate() applies the per-line length cap.
+            result = aggregate(handle)
     except OSError as exc:
         # Not a malformed-transcript case (that never raises); this is a bad
         # invocation. Report cleanly on stderr, no traceback, non-zero exit.
         print(f"cannot read transcript: {exc}", file=sys.stderr)
         return 1
 
-    result = aggregate(lines)
     print(json.dumps(result, sort_keys=True))
     return 0
 

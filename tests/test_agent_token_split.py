@@ -87,3 +87,28 @@ def test_main_missing_file_reports_cleanly(
     captured = capsys.readouterr()
     assert captured.out == ""  # stdout stays clean
     assert "cannot read transcript" in captured.err
+
+
+def test_deeply_nested_line_is_skipped() -> None:
+    # ~200k nested brackets: json.loads raises RecursionError, which the plain
+    # (ValueError, TypeError) guard would NOT catch. It must be skipped, and the
+    # surrounding well-formed line must still be summed.
+    nested = "[" * 200_000
+    valid = '{"message": {"usage": {"input_tokens": 7, "output_tokens": 9}}}'
+    result = tool.aggregate([nested, valid])
+    assert result["input_tokens"] == 7
+    assert result["output_tokens"] == 9
+
+
+def test_main_survives_nested_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    transcript = tmp_path / "nested.jsonl"
+    transcript.write_text(
+        "[" * 200_000
+        + "\n"
+        + '{"message": {"usage": {"input_tokens": 5}}}\n'
+    )
+    code = tool.main([str(transcript)])
+    assert code == 0  # exits cleanly despite the pathological line
+    assert json.loads(capsys.readouterr().out)["input_tokens"] == 5

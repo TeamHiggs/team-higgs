@@ -146,3 +146,23 @@ def test_update_bad_token_value_is_validation_error(invoke, task_id) -> None:  #
     invoke("run", "finish", "--run", str(run_id), "--outcome", "done")
     result, _ = invoke("run", "update", str(run_id), "--input-tokens", "notanint")
     assert result.exit_code == 2
+
+
+# The 0004 non-negative CHECK rejects negative token counts at the DB. A
+# CheckViolation maps to ValidationError (exit 2) via emctl/errors.py — the
+# repo's established mapping for CHECK breaches (see docs/stack-backend.md),
+# not ConflictError/exit 4.
+def test_finish_rejects_negative_tokens(invoke, task_id) -> None:  # type: ignore[no-untyped-def]
+    run_id = _start_run(invoke, task_id)
+    result, _ = invoke(
+        "run", "finish", "--run", str(run_id), "--outcome", "done",
+        "--input-tokens", "-5",
+    )
+    assert result.exit_code == 2
+
+
+def test_update_rejects_negative_tokens(invoke, task_id) -> None:  # type: ignore[no-untyped-def]
+    run_id = _start_run(invoke, task_id)
+    invoke("run", "finish", "--run", str(run_id), "--outcome", "done")
+    result, _ = invoke("run", "update", str(run_id), "--cache-write", "-1")
+    assert result.exit_code == 2

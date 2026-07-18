@@ -60,11 +60,12 @@ CREATE TABLE runs (
     -- schema v2.1 (migration 0004): per-run token usage by type, for accurate
     -- (cache-dominated) API cost projection. All nullable; NULL when no
     -- transcript was aggregated. cache_read/write map to the API's
-    -- cache_read_input_tokens / cache_creation_input_tokens.
-    input_tokens        BIGINT,
-    output_tokens       BIGINT,
-    cache_read_tokens   BIGINT,
-    cache_write_tokens  BIGINT
+    -- cache_read_input_tokens / cache_creation_input_tokens. Each carries a
+    -- non-negative CHECK (NULL allowed).
+    input_tokens        BIGINT CHECK (input_tokens       IS NULL OR input_tokens       >= 0),
+    output_tokens       BIGINT CHECK (output_tokens      IS NULL OR output_tokens      >= 0),
+    cache_read_tokens   BIGINT CHECK (cache_read_tokens  IS NULL OR cache_read_tokens  >= 0),
+    cache_write_tokens  BIGINT CHECK (cache_write_tokens IS NULL OR cache_write_tokens >= 0)
 );
 
 CREATE TABLE prs (

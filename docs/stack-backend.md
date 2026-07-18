@@ -156,8 +156,9 @@ rows through that path, but registers nothing.
 
 `0004` is additive and reversible (PRD `docs/prd/token-accounting.md`). It adds
 four nullable `BIGINT` columns to `runs` — `input_tokens`, `output_tokens`,
-`cache_read_tokens`, `cache_write_tokens` — so per-run API token usage is
-recorded **by type** rather than as the single `token_cost` lump (which is
+`cache_read_tokens`, `cache_write_tokens`, each with a `col IS NULL OR col >= 0`
+CHECK — so per-run API token usage is recorded **by type** rather than as the
+single `token_cost` lump (which is
 ≈ output tokens only). Measured cost is cache-dominated, so the lump under-counts
 badly; the typed columns supersede it for cost projection. `token_cost` is left
 untouched (legacy); `downgrade()` drops the four columns and is round-trip tested
@@ -169,8 +170,9 @@ without a transcript validate without a data migration.
   optional `--input-tokens --output-tokens --cache-read --cache-write`; a **new
   `run update <RUN_ID>`** amends an already-finished run (correction /
   historical backfill) with those four flags plus `--tokens --cost --outcome
-  --log-ref`. Unknown `RUN_ID` → `NotFoundError` (exit 3); a bad enum/value →
-  `ValidationError` (exit 2). Only supplied flags are written, so an omitted
+  --log-ref`. Unknown `RUN_ID` → `NotFoundError` (exit 3); a bad enum/value, or
+  a negative token count breaching the CHECK, → `ValidationError` (exit 2, the
+  repo's `CheckViolation` mapping). Only supplied flags are written, so an omitted
   flag never nulls a stored value; `run update` does not touch `ended_at` (it is
   not a finish).
 - **Transcript aggregator (out of emctl, deliberately).**
