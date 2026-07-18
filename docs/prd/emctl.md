@@ -132,27 +132,32 @@ id → `NotFoundError` (exit 3), never a silent no-op.
   `(project, github_pr)`), generic=1. psycopg `IntegrityError` /
   `CheckViolation` are caught in `repo`/`errors` and mapped to these — raw
   SQL, tracebacks, and connection strings never reach stdout/stderr.
-- **`metric report` boundary (amended after PR #5 security review).** The
-  stored `definition` is operator-authored SQL (written via `metric define`),
-  but it is executed verbatim, so it is treated as adversarial. A READ ONLY
-  transaction alone is **insufficient** — it is a transaction attribute the
-  stored SQL can revert with its own `COMMIT; BEGIN READ WRITE; …` when
-  psycopg runs a multi-statement string. The boundary is four layered
-  controls, the first of which is the real one:
-  1. **Least-privilege role (primary).** A NOLOGIN `emctl_report_ro` role
-     with only `USAGE` + `SELECT` (and default privileges for future tables),
-     provisioned by `emctl migrate`. The report path `SET ROLE`s to it before
-     executing the definition, so no write privilege exists regardless of
-     transaction gymnastics. NOLOGIN + `SET ROLE` deliberately introduces no
-     new credentials.
-  2. **Single-statement only.** The definition runs on the extended query
-     protocol (empty params), which rejects `;`-chained statements — killing
-     the transaction-control escape at the source.
-  3. **READ ONLY transaction** — retained as a second layer.
-  4. **Define-time validation** — reject non-single-statement / non-`SELECT`
-     definitions at `metric define` as a fast-fail, not the boundary.
-  Documented in `stack-backend.md`; supersedes the earlier "READ ONLY tx is
-  the guard" decision (§11).
+- **`metric report` boundary (amended after PR #5 security rounds 1–2).** The
+  stored `definition` is executed verbatim, so it is treated as adversarial.
+  Layer ordering matters here because the panel disproved two successive
+  wrong claims (round 1: "READ ONLY tx is the guard"; round 2: "the role is
+  the guard"). What is actually true, empirically:
+  1. **READ ONLY transaction — the load-bearing, role-independent control.**
+     It blocks every write, including writes inside functions and PL/pgSQL
+     `DO` blocks. This is the control that carries the guarantee; it must not
+     be removed. (Round 1's escape only worked because a *multi-statement*
+     string could `COMMIT` out of the read-only tx — closed by control 2.)
+  2. **Define-time validation — the CLI gate.** `metric define`/`update`
+     reject any definition that is not a single `SELECT`/`WITH` (including
+     `DO` blocks), so adversarial payloads cannot enter `metrics.definition`
+     through the legitimate surface at all.
+  3. **`SET LOCAL ROLE emctl_report_ro` + single-statement `prepare=True` —
+     supplementary hardening, NOT a boundary.** The NOLOGIN role (USAGE +
+     SELECT only, provisioned by `emctl migrate`) and single-statement
+     execution stop accidental and simple writes and raise the bar, but are
+     bypassable within one statement: a `DO $$ … RESET ROLE; EXECUTE '…' $$`
+     block is a single top-level statement and `RESET ROLE` returns to the
+     privileged `session_user`. Documented as hardening, not as the guarantee.
+  **Future hardening (filed as debt):** make the role a genuine boundary by
+  authenticating the report connection *as* `emctl_report_ro` (a distinct
+  login / second scoped connection) so `RESET ROLE` cannot restore privilege.
+  Deferred because control 1 already holds. Documented in `stack-backend.md`;
+  supersedes the earlier "READ ONLY tx is the guard" decision (§11).
 
 ## 7. Migrations (Alembic — Tyler's call)
 
@@ -234,13 +239,19 @@ backfills them immediately after merge:
   `prd_ref=docs/prd/emctl.md`, status tracked through the vocabulary.
 - `runs` rows: the implementer run and each reviewer run.
 - `decisions` rows: (a) migrations-as-operative-truth over `db/schema.sql`;
-  (b) **superseded** — `metric report`'s boundary is a least-privilege
-  read-only role + single-statement + READ ONLY tx + define-time validation
-  (the READ ONLY-tx-alone decision was falsified by the PR #5 security review);
+  (b) **superseded** — `metric report`'s load-bearing control is the **READ
+  ONLY transaction**, gated by define-time SELECT/WITH validation, with the
+  `emctl_report_ro` role + single-statement execution as supplementary
+  hardening (the earlier "READ ONLY-tx-alone" *and* the interim "role is the
+  boundary" framings were both falsified by the PR #5 security rounds);
   (c) `--version` deferred as the phase-2 canary.
-- `prs` + `reviews` rows once the PR opens and reviews land (security round 1:
-  `block`; the finding drove this amendment and rework round 1).
+- `prs` + `reviews` rows: security **round 1** `block` (escapable read-only
+  tx) → rework → **round 2** `concerns` (fix verified exploit-free; doc
+  narrative corrected) → doc-only rework. Two review rounds on this PR.
+- `debt` row: make the `emctl_report_ro` role a genuine boundary
+  (connection-authenticated-as-role) so `RESET ROLE` cannot restore
+  privilege; medium; deferred because READ ONLY carries the guarantee.
 - `learnings` row (`start`): pressure-test security `[EM call]`s against the
-  actual DB mechanism before asserting them as safety guarantees in a spec —
-  the READ ONLY-tx guarantee was escapable and cost a review round (evidence:
-  PR #5 security round 1).
+  actual DB mechanism before asserting them as guarantees — the EM asserted
+  *two* wrong guarantees in a row here (read-only-tx, then role-as-boundary),
+  each caught only by the panel (evidence: PR #5 security rounds 1–2).
