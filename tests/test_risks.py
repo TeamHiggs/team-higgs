@@ -50,6 +50,20 @@ def test_update_off_acknowledged_sets_resolved_at(invoke, project_id) -> None:  
     assert updated["mitigation"] == "we live with it"
 
 
+def test_reopen_clears_resolved_at(invoke, project_id) -> None:  # type: ignore[no-untyped-def]
+    _, risk = invoke(
+        "risk", "add", "--project", str(project_id), "--title", "t",
+        "--category", "security", "--severity", "high",
+    )
+    # acknowledged -> mitigated stamps resolved_at ...
+    _, mitigated = invoke("risk", "update", str(risk["id"]), "--status", "mitigated")
+    assert mitigated["resolved_at"] is not None
+    # ... and reopening (mitigated -> acknowledged) clears it back to NULL.
+    _, reopened = invoke("risk", "update", str(risk["id"]), "--status", "acknowledged")
+    assert reopened["status"] == "acknowledged"
+    assert reopened["resolved_at"] is None
+
+
 def test_add_already_dispositioned_sets_resolved_at(invoke, project_id) -> None:  # type: ignore[no-untyped-def]
     _, risk = invoke(
         "risk", "add", "--project", str(project_id), "--title", "born-accepted",

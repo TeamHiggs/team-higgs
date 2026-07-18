@@ -86,9 +86,14 @@ def update(
     if decision_id is not None:
         values["decision_id"] = decision_id
     # Leaving 'acknowledged' resolves the risk (PRD §3): stamp resolved_at.
+    # Reopening (back to 'acknowledged') clears it so the register's own data
+    # stays consistent.
     extra: list[Any] = []
-    if status is not None and status != "acknowledged":
-        extra.append(sql.SQL("resolved_at = now()"))
+    if status is not None:
+        if status != "acknowledged":
+            extra.append(sql.SQL("resolved_at = now()"))
+        else:
+            extra.append(sql.SQL("resolved_at = NULL"))
     return _sql.update(
         conn, "risks", "risk", risk_id, values, extra=extra or None
     )
