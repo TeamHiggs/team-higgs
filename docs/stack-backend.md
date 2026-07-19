@@ -160,3 +160,65 @@ state between tests. Cover happy and unhappy paths: bad enums, missing files,
 constraint violations, unset config, the READ ONLY boundary, and `--json`
 stability — not just the demo case. CI wiring (a Postgres service in Actions)
 is a phase-2 follow-up for implementer-devops.
+
+---
+
+# Platform backend decisions (2026-07-19)
+
+The sections above describe **emctl** (a CLI). The following are **team-wide**
+backend decisions that apply to **every product service** (the first is
+`plant-log`). Where a product service and emctl differ, it is called out.
+
+## Packaging: uv
+
+**uv** is the Python packaging/dependency manager for all Python work — same
+house as ruff, fast, with a committed lockfile, and the mechanism by which
+product repos install platform tooling (`uv tool install emctl`). A `pyproject`
++ `uv.lock` per package. (emctl currently uses plain setuptools + PEP 621, no
+lock; migrate it to uv.)
+
+## Product services: FastAPI + Pydantic v2 + SQLAlchemy + Alembic
+
+Product HTTP services use **FastAPI + Pydantic v2** (typed request/response
+models — no bare `dict`/`Any` on API seams), **SQLAlchemy (ORM)** for data
+access, **Alembic** for migrations, **Postgres**, Docker, pytest (>80%
+coverage), ruff, mypy strict. OpenAPI is the contract the frontend builds
+against.
+
+**ORM policy — the one place products differ from emctl.** Product services use
+the SQLAlchemy ORM. emctl deliberately does **not** (raw psycopg 3, parameterized
+SQL) because of its security-sensitive `metric report` SQL-execution boundary;
+that discipline is **emctl-specific, not platform-wide**. Both still hold the
+line: parameterized SQL only, no string-built queries.
+
+## Domain data is append-only (audit-by-default)
+
+**Auditable domain state is stored as an immutable event log**, not mutated in
+place — so every entity carries a full, presentable audit trail. Adopted as a
+platform convention 2026-07-19; `plant-log`'s `watering_events` is the reference
+implementation.
+
+- One immutable events table per auditable aggregate. Rows are **never UPDATEd
+  or DELETEd**. Columns: an event PK, an `entry_id` grouping one logical entry's
+  events, an `event_type` (`created | amended | deleted`), the domain fields, an
+  `actor` (who did the event), and an immutable `recorded_at`.
+- An **edit** appends an `amended` event; a **delete** appends a `deleted`
+  tombstone. Nothing is destroyed.
+- **Current state is a projection** — the latest event per `entry_id`, excluding
+  entries whose latest event is `deleted` (a view/query, not stored).
+- **History is the full event chain** for an `entry_id`, surfaced via a
+  dedicated endpoint and shown in the UI.
+
+**Boundary (so "always append-only" is read sensibly):** this applies to
+*domain/business state you want audited*, **not** to identity/config rows. A
+`users` table upserting on login is not an event log. The default posture is
+auditable-by-append for business entities; use judgment at the edges. The extra
+cost over plain CRUD (events table + projection + history surface) is real and
+deliberate — log it as an accepted cost/scope item per product.
+
+## Async / messaging: no broker; managed GCP when needed
+
+No self-hosted message broker (RabbitMQ is off the table — operational weight on
+Cloud Run). When a product genuinely needs async/eventing, use **managed GCP**
+(Pub/Sub or Cloud Tasks — WIF-friendly, no ops). Most MVPs need neither;
+introduce it behind a specific need, recorded as a decision.
