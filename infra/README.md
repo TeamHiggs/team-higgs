@@ -100,6 +100,95 @@ The first apply uses the placeholder image; the service comes up healthy on
 `gcloud run deploy` it (or let the CI deploy workflow — a follow-up — do it).
 Terraform ignores image changes and will not revert the shipped revision.
 
+## WIF trust model — operational (READ before granting CI to a new repo)
+
+WIF trust is an **explicit named-repo allowlist**, by deliberate least-privilege
+choice. **New org repos are NOT auto-trusted.** When a new repo needs CI/WIF
+access, add its `TeamHiggs/<repo>` to the provider `attribute_condition` in
+`wif.tf` and re-apply. Removing a repo from the allowlist revokes its access on
+the next apply.
+
+**Trust invariant (two independent layers):**
+
+- **Provider `attribute_condition`** — owner **and** repo scoped: `repository_owner`
+  must be `TeamHiggs` **and** `repository` must be one of the allowlisted repos
+  (`TeamHiggs/team-higgs`, `TeamHiggs/plant-log`). This is who may mint a token
+  at all. Both repos are load-bearing: plant-log's deploy workflow runs from
+  `TeamHiggs/plant-log`; team-higgs infra applies from `TeamHiggs/team-higgs`.
+- **`github-ci` `workloadIdentityUser` binding** — per-**ref** scoped: only the
+  `attribute.ref/refs/heads/main` principalSet may impersonate `github-ci`, and
+  the binding is authoritative (nothing else can be added out of band).
+
+Net: only `refs/heads/main` workflows from the allowlisted repos can act as
+`github-ci`.
+
+**Blast radius** if `github-ci` were compromised: `github-ci` can `actAs`
+`plantlog-run@`, which reads all plant-log production secrets —
+`plantlog-database-url`, `plantlog-session-secret`, `plantlog-google-client-secret`.
+That is why both the repo allowlist and the main-ref binding are kept tight and
+authoritative.
+
+## Importing WIF (one-time, Tyler, local — bootstrap)
+
+`wif.tf` codifies resources that already exist in GCP (the WIF pool/provider and
+the `github-ci` service account were created out-of-band on day zero). They must
+be **imported** into state before the first apply, or apply would try to create
+duplicates.
+
+This apply is necessarily **local, under Tyler's own gcloud ADC** — the same
+bootstrap caveat as day zero. WIF *is* the identity that lets CI apply infra, so
+CI cannot apply the change that grants CI its own trust before it has that trust
+(and right now CI auth is broken by the org rename anyway). After this, CI owns
+apply again.
+
+Import the three resources that pre-exist (project id `team-higgs-platform`):
+
+```sh
+cd infra
+terraform init -backend-config=backend.hcl
+
+# WIF pool
+terraform import google_iam_workload_identity_pool.github \
+  projects/team-higgs-platform/locations/global/workloadIdentityPools/github
+
+# WIF provider
+terraform import google_iam_workload_identity_pool_provider.github \
+  projects/team-higgs-platform/locations/global/workloadIdentityPools/github/providers/github
+
+# workloadIdentityUser role binding on github-ci (authoritative; quote the space)
+terraform import google_service_account_iam_binding.github_ci_wif \
+  "projects/team-higgs-platform/serviceAccounts/github-ci@team-higgs-platform.iam.gserviceaccount.com roles/iam.workloadIdentityUser"
+```
+
+Not imported (they do **not** exist yet — created by the apply below):
+
+- `data.google_service_account.github_ci` — a data source, never imported; it
+  reads the existing SA at plan time.
+- `google_artifact_registry_repository_iam_member.github_ci_ar_writer`
+- `google_cloud_run_v2_service_iam_member.github_ci_run_developer`
+- `google_service_account_iam_member.github_ci_actas_runtime`
+
+  (github-ci has no roles today; these three are fresh grants.)
+
+Then plan and apply:
+
+```sh
+terraform plan -out plan.tfplan
+terraform apply plan.tfplan
+```
+
+**Expected plan after import** (no destroys; nothing stateful touched):
+
+| Resource | Action | Why |
+|---|---|---|
+| `google_iam_workload_identity_pool.github` | no-op | live state already matches |
+| `google_iam_workload_identity_pool_provider.github` | update in place (mutable fields; NOT force-new / not recreated) | `attribute_condition` -> the `TeamHiggs` owner + `TeamHiggs/team-higgs`/`TeamHiggs/plant-log` repo allowlist; the ONLY `attribute_mapping` delta is the additive `attribute.ref = assertion.ref` (the other three mappings are unchanged) |
+| `google_service_account_iam_binding.github_ci_wif` | update in place | members change from the two `theTylerDorland/*` per-repo principalSets to the single `attribute.ref/refs/heads/main` principalSet |
+| `github_ci_ar_writer` / `github_ci_run_developer` / `github_ci_actas_runtime` | create (×3) | the three least-privilege deploy grants |
+
+If the plan shows anything else — especially any destroy, or a change to a
+`plantlog-*` resource — stop and re-check; that is not expected.
+
 ## Agent-time validation (no apply, no real plan)
 
 The day-zero preconditions and cloud auth do not exist at authoring time, so a
