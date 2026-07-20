@@ -23,6 +23,12 @@ resource "google_sql_database_instance" "platform" {
     availability_type = "ZONAL"
     disk_autoresize   = true
 
+    # The Cloud SQL API now defaults new POSTGRES_16 instances to ENTERPRISE_PLUS,
+    # which rejects shared-core tiers like db-f1-micro. We want the cheap Enterprise
+    # edition (db-f1-micro is a supported shared-core tier there; PITR is supported).
+    # Pinning this explicitly also insulates us from a future API default change.
+    edition = "ENTERPRISE"
+
     backup_configuration {
       enabled                        = true
       point_in_time_recovery_enabled = true
