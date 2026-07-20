@@ -11,9 +11,11 @@
 # "Day-zero preconditions" #4) and had no code representation. This file brings
 # them under Terraform and encodes two changes:
 #
-#   1. Whole-org trust. The org moved theTylerDorland -> TeamHiggs, which broke
-#      CI auth because the provider still trusted the old owner. The provider
-#      attribute_condition now trusts the whole TeamHiggs org.
+#   1. Named-repo trust under the TeamHiggs org. The org moved theTylerDorland
+#      -> TeamHiggs, which broke CI auth because the provider still trusted the
+#      old owner. The provider attribute_condition now trusts an explicit
+#      allowlist of TeamHiggs repos (team-higgs + plant-log) — deliberate
+#      least-privilege; new org repos are NOT auto-trusted.
 #   2. main-ref hardening (task #14 / security review on PR #8). Impersonation
 #      of github-ci is restricted to workflows running on refs/heads/main, and
 #      is authoritative so no other principal can be added out of band. This is
@@ -37,9 +39,13 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   workload_identity_pool_provider_id = "github"
   display_name                       = "GitHub OIDC"
 
-  # Trust every repository in the TeamHiggs org (was: two named theTylerDorland
-  # repos). Repo-level scoping now happens on the SA binding via attribute.ref.
-  attribute_condition = "assertion.repository_owner=='TeamHiggs'"
+  # Explicit named-repo allowlist under the TeamHiggs org (deliberate
+  # least-privilege — new org repos are NOT auto-trusted; add TeamHiggs/<repo>
+  # here to grant access). BOTH repos are required: plant-log's deploy workflow
+  # runs from TeamHiggs/plant-log, and team-higgs infra applies from
+  # TeamHiggs/team-higgs. (Was: the two theTylerDorland repos, pre-rename.)
+  # Ref-level scoping is layered on top by the SA binding below via attribute.ref.
+  attribute_condition = "assertion.repository_owner=='TeamHiggs' && (assertion.repository=='TeamHiggs/team-higgs' || assertion.repository=='TeamHiggs/plant-log')"
 
   # google.subject + repository + repository_owner existed on day zero; the new
   # attribute.ref mapping is what lets the SA binding key on the git ref.
@@ -70,8 +76,8 @@ data "google_service_account" "github_ci" {
 # impersonation out of band, which is the whole point of the hardening.
 #
 # principalSet keys on attribute.ref/refs/heads/main. Combined with the
-# provider's org condition, the net trust is:
-#   only main-branch workflows from repos in the TeamHiggs org.
+# provider's named-repo condition, the net trust is:
+#   only refs/heads/main workflows from the allowlisted TeamHiggs repos.
 resource "google_service_account_iam_binding" "github_ci_wif" {
   service_account_id = data.google_service_account.github_ci.name
   role               = "roles/iam.workloadIdentityUser"

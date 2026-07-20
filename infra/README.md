@@ -100,6 +100,34 @@ The first apply uses the placeholder image; the service comes up healthy on
 `gcloud run deploy` it (or let the CI deploy workflow — a follow-up — do it).
 Terraform ignores image changes and will not revert the shipped revision.
 
+## WIF trust model — operational (READ before granting CI to a new repo)
+
+WIF trust is an **explicit named-repo allowlist**, by deliberate least-privilege
+choice. **New org repos are NOT auto-trusted.** When a new repo needs CI/WIF
+access, add its `TeamHiggs/<repo>` to the provider `attribute_condition` in
+`wif.tf` and re-apply. Removing a repo from the allowlist revokes its access on
+the next apply.
+
+**Trust invariant (two independent layers):**
+
+- **Provider `attribute_condition`** — owner **and** repo scoped: `repository_owner`
+  must be `TeamHiggs` **and** `repository` must be one of the allowlisted repos
+  (`TeamHiggs/team-higgs`, `TeamHiggs/plant-log`). This is who may mint a token
+  at all. Both repos are load-bearing: plant-log's deploy workflow runs from
+  `TeamHiggs/plant-log`; team-higgs infra applies from `TeamHiggs/team-higgs`.
+- **`github-ci` `workloadIdentityUser` binding** — per-**ref** scoped: only the
+  `attribute.ref/refs/heads/main` principalSet may impersonate `github-ci`, and
+  the binding is authoritative (nothing else can be added out of band).
+
+Net: only `refs/heads/main` workflows from the allowlisted repos can act as
+`github-ci`.
+
+**Blast radius** if `github-ci` were compromised: `github-ci` can `actAs`
+`plantlog-run@`, which reads all plant-log production secrets —
+`plantlog-database-url`, `plantlog-session-secret`, `plantlog-google-client-secret`.
+That is why both the repo allowlist and the main-ref binding are kept tight and
+authoritative.
+
 ## Importing WIF (one-time, Tyler, local — bootstrap)
 
 `wif.tf` codifies resources that already exist in GCP (the WIF pool/provider and
@@ -154,7 +182,7 @@ terraform apply plan.tfplan
 | Resource | Action | Why |
 |---|---|---|
 | `google_iam_workload_identity_pool.github` | no-op | live state already matches |
-| `google_iam_workload_identity_pool_provider.github` | update in place | `attribute_condition` -> `assertion.repository_owner=='TeamHiggs'`; add `attribute.ref` to `attribute_mapping` |
+| `google_iam_workload_identity_pool_provider.github` | update in place (mutable fields; NOT force-new / not recreated) | `attribute_condition` -> the `TeamHiggs` owner + `TeamHiggs/team-higgs`/`TeamHiggs/plant-log` repo allowlist; the ONLY `attribute_mapping` delta is the additive `attribute.ref = assertion.ref` (the other three mappings are unchanged) |
 | `google_service_account_iam_binding.github_ci_wif` | update in place | members change from the two `theTylerDorland/*` per-repo principalSets to the single `attribute.ref/refs/heads/main` principalSet |
 | `github_ci_ar_writer` / `github_ci_run_developer` / `github_ci_actas_runtime` | create (×3) | the three least-privilege deploy grants |
 
