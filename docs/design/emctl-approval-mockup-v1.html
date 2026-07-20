@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>emctl · approvals — mockup v1</title>
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+   emctl approval surface — mockup v1
+   Thesis: cool machine, warm judgment. Everything the agent team produces is
+   rendered cool (graphite/slate). The one warm saturated color — amber — is
+   reserved for the single human act: approval. Self-contained, system fonts.
+   ───────────────────────────────────────────────────────────────────────── */
+:root{
+  --void:#0f1217;      /* app background — deep, warm-neutral graphite      */
+  --panel:#151a21;     /* raised panel                                      */
+  --panel-2:#1a212a;   /* nested surface                                    */
+  --panel-3:#202834;   /* hover / active surface                            */
+  --line:#232b36;      /* hairline                                          */
+  --line-2:#2f3a48;    /* brighter hairline                                 */
+  --ink:#e7ebf1;       /* primary text                                      */
+  --mute:#93a0b1;      /* secondary text                                    */
+  --faint:#606b7b;     /* tertiary / metadata labels                        */
+  --cool:#5aa6bd;      /* machine accent — links, branches                  */
+  --cool-deep:#3b7b8f;
+  /* the one warm, saturated signal — human judgment */
+  --gate:#f2a63c;
+  --gate-bright:#ffbf5e;
+  --gate-glow:rgba(242,166,60,.16);
+  --gate-line:rgba(242,166,60,.55);
+  --hold:#d0765a;      /* request-changes — warm but muted, always hollow    */
+  /* desaturated status signals (kept cool so amber stays the hero)          */
+  --sage:#68a084;      /* low risk / approved / diff-add                     */
+  --sand:#c2a15a;      /* medium risk                                        */
+  --rose:#c47e86;      /* high risk / diff-del (desaturated on purpose)      */
+  --add-bg:rgba(104,160,132,.10);
+  --del-bg:rgba(196,126,134,.10);
+  --mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,"Cascadia Code",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  --r:10px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{color-scheme:dark}
+body{
+  margin:0;background:var(--void);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  height:100vh;overflow:hidden;
+}
+/* subtle instrument-panel grain: two faint radial washes, no gradients-as-hero */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(60% 50% at 82% -8%, rgba(90,166,189,.06), transparent 60%),
+    radial-gradient(50% 45% at -6% 106%, rgba(242,166,60,.045), transparent 60%);
+}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--cool);outline-offset:2px;border-radius:6px}
+
+.lbl{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint)}
+.mono{font-family:var(--mono)}
+
+/* ── shell ─────────────────────────────────────────────────────────────── */
+.app{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column}
+
+.topbar{display:flex;align-items:center;gap:16px;height:56px;padding:0 20px;
+  border-bottom:1px solid var(--line);flex:0 0 auto;background:rgba(15,18,23,.7);
+  backdrop-filter:blur(10px)}
+.mark{display:flex;align-items:baseline;gap:9px;font-family:var(--mono);font-weight:600;
+  font-size:15px;letter-spacing:-.01em;color:var(--ink)}
+.mark .chev{color:var(--faint);font-weight:400}
+.mark .seg{color:var(--gate)}
+.mark small{font-family:var(--sans);font-weight:500;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.spacer{flex:1}
+.legend{display:flex;align-items:center;gap:16px;font-size:11.5px;color:var(--mute)}
+.legend .k{display:inline-flex;align-items:center;gap:7px}
+.legend .swatch{width:9px;height:9px;border-radius:2px;display:inline-block}
+.legend .swatch.machine{background:var(--cool)}
+.legend .swatch.human{background:var(--gate);box-shadow:0 0 8px var(--gate-glow)}
+.who{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--mute)}
+.who .av{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+  font-family:var(--mono);font-weight:600;font-size:11px;color:var(--void);
+  background:linear-gradient(150deg,var(--gate-bright),var(--gate))}
+.live{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--sage)}
+.live .beacon{width:7px;height:7px;border-radius:50%;background:var(--sage);
+  box-shadow:0 0 0 0 rgba(104,160,132,.5);animation:pulse 2.6s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(104,160,132,.45)}70%,100%{box-shadow:0 0 0 7px rgba(104,160,132,0)}}
+
+.body{flex:1;display:grid;grid-template-columns:minmax(340px,400px) 1fr;min-height:0}
+
+/* ── the gate (queue rail) ─────────────────────────────────────────────── */
+.gate{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.012),transparent 240px)}
+.gate-head{padding:22px 22px 16px;flex:0 0 auto}
+.gate-count{display:flex;align-items:baseline;gap:12px}
+.gate-count .n{font-family:var(--mono);font-size:44px;font-weight:500;line-height:.9;
+  letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums}
+.gate-count .n.clearing{color:var(--faint)}
+.gate-count .cap{display:flex;flex-direction:column;gap:2px}
+.gate-count .cap b{font-weight:600;font-size:14px}
+.gate-count .cap span{font-size:11.5px;color:var(--faint)}
+.gate-sub{margin-top:14px;font-size:12px;color:var(--mute);display:flex;gap:14px;flex-wrap:wrap}
+.gate-sub b{color:var(--ink);font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums}
+
+.queue{flex:1;overflow-y:auto;padding:6px 14px 24px;position:relative}
+/* the line: a vertical rail items are docked against */
+.queue::before{content:"";position:absolute;top:0;bottom:0;left:22px;width:1px;
+  background:linear-gradient(180deg,transparent,var(--line-2) 40px,var(--line-2) calc(100% - 40px),transparent)}
+
+.card{position:relative;margin:9px 0 9px 8px;padding:13px 14px 13px 20px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  cursor:pointer;transition:border-color .16s,background .16s,transform .28s,opacity .28s;
+  animation:dock .42s cubic-bezier(.2,.7,.2,1) backwards}
+@keyframes dock{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+.card:hover{border-color:var(--line-2);background:var(--panel-2)}
+.card:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+/* tick on the rail */
+.card::before{content:"";position:absolute;left:-6px;top:18px;width:12px;height:2px;
+  background:var(--line-2);transition:background .18s,box-shadow .18s}
+.card.sel{border-color:var(--line-2);background:var(--panel-2);
+  box-shadow:-1px 0 0 var(--cool), 0 6px 20px -12px rgba(0,0,0,.6)}
+.card.sel::before{background:var(--cool);box-shadow:0 0 8px rgba(90,166,189,.6)}
+.card.approving{border-color:var(--gate-line)}
+.card.approving::before{background:var(--gate);box-shadow:0 0 10px var(--gate-glow)}
+.card.cleared{opacity:0;transform:translateX(28px);pointer-events:none;
+  margin-top:0;margin-bottom:0;max-height:0;padding-top:0;padding-bottom:0}
+
+.card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.badge{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;padding:3px 7px;border-radius:5px;border:1px solid transparent}
+.badge.pr{color:var(--cool);border-color:rgba(90,166,189,.35);background:rgba(90,166,189,.08)}
+.badge.decision{color:var(--gate);border-color:rgba(242,166,60,.3);background:rgba(242,166,60,.07)}
+.badge.doc{color:var(--mute);border-color:var(--line-2);background:var(--panel-3)}
+.badge.mockup{color:#b48ad6;border-color:rgba(180,138,214,.35);background:rgba(180,138,214,.08)}
+.badge.question{color:var(--sage);border-color:rgba(104,160,132,.35);background:rgba(104,160,132,.08)}
+.card-top .proj{font-family:var(--mono);font-size:11px;color:var(--faint);
+  margin-left:auto;letter-spacing:.02em}
+.card-title{font-size:14px;font-weight:600;line-height:1.3;margin:0 0 10px;
+  letter-spacing:-.005em;color:var(--ink)}
+.card-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  font-family:var(--mono);font-size:11px;color:var(--faint)}
+.card-meta .m{display:inline-flex;align-items:center;gap:5px}
+.card-meta .m b{color:var(--mute);font-weight:500;font-variant-numeric:tabular-nums}
+.card-meta .flag{color:var(--hold);border:1px solid rgba(208,118,90,.4);border-radius:5px;
+  padding:1px 6px;letter-spacing:.06em;text-transform:uppercase;font-size:9.5px}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--faint)}
+.dot.hi{background:var(--rose)} .dot.md{background:var(--sand)} .dot.lo{background:var(--sage)}
+
+/* ── detail / inline artifact preview ──────────────────────────────────── */
+.detail{display:flex;flex-direction:column;min-height:0;position:relative}
+.detail-scroll{flex:1;overflow-y:auto;min-height:0}
+
+.dhead{padding:24px 30px 20px;border-bottom:1px solid var(--line)}
+.dhead-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.dtitle{font-size:21px;font-weight:600;letter-spacing:-.015em;line-height:1.25;margin:0}
+.dmeta{display:flex;gap:26px;flex-wrap:wrap;margin-top:16px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field .v{font-family:var(--mono);font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+.field .v a{color:var(--cool);text-decoration:none;border-bottom:1px solid rgba(90,166,189,.3)}
+.field .v a:hover{color:var(--gate);border-color:var(--gate-line)}
+.field .v.role{color:var(--mute)}
+
+.section{padding:22px 30px}
+.section + .section{border-top:1px solid var(--line)}
+.section > .lbl{margin-bottom:14px;display:block}
+
+/* review panel (PR context) */
+.panel-strip{display:flex;flex-direction:column;gap:10px}
+.rev{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r)}
+.rev .vd{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;padding:4px 8px;border-radius:5px;flex:0 0 auto;margin-top:1px}
+.vd.approve{color:var(--sage);background:rgba(104,160,132,.1);border:1px solid rgba(104,160,132,.3)}
+.vd.concerns{color:var(--sand);background:rgba(194,161,90,.1);border:1px solid rgba(194,161,90,.3)}
+.vd.block{color:var(--rose);background:rgba(196,126,134,.1);border:1px solid rgba(196,126,134,.3)}
+.rev .rbody{flex:1;min-width:0}
+.rev .rrole{font-family:var(--mono);font-size:11.5px;color:var(--mute);margin-bottom:4px;
+  display:flex;gap:10px;align-items:baseline}
+.rev .rrole .model{color:var(--faint);font-size:10.5px}
+.rev .robj{font-size:13px;color:var(--ink);line-height:1.5}
+.rev .robj em{color:var(--faint);font-style:normal}
+
+.em-summary{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--cool-deep);
+  border-radius:var(--r);padding:15px 17px;font-size:13.5px;line-height:1.6;color:var(--mute)}
+.em-summary b{color:var(--ink);font-weight:600}
+
+/* diff */
+.diff{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;font-family:var(--mono);
+  font-size:12.5px;line-height:1.7}
+.diff-file{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--panel-2);
+  border-bottom:1px solid var(--line);color:var(--mute);font-size:11.5px}
+.diff-file .path{color:var(--ink)}
+.diff-file .stat{margin-left:auto;display:flex;gap:8px}
+.diff-file .stat .a{color:var(--sage)} .diff-file .stat .d{color:var(--rose)}
+.diff pre{margin:0;overflow-x:auto}
+.dl{display:grid;grid-template-columns:44px 1fr;white-space:pre}
+.dl .gut{text-align:right;padding:0 10px;color:var(--faint);user-select:none;
+  border-right:1px solid var(--line)}
+.dl .txt{padding:0 14px;color:var(--mute)}
+.dl.add{background:var(--add-bg)} .dl.add .txt{color:#a9d3bd}
+.dl.add .gut{color:var(--sage)}
+.dl.del{background:var(--del-bg)} .dl.del .txt{color:#dcb2b7}
+.dl.del .gut{color:var(--rose)}
+.dl.hunk .txt{color:var(--cool);opacity:.8}
+.dl.hunk{background:rgba(90,166,189,.05)}
+
+/* rendered doc */
+.doc-render{font-size:14.5px;line-height:1.7;color:var(--mute);max-width:68ch}
+.doc-render h1{font-size:22px;font-weight:600;color:var(--ink);margin:0 0 6px;letter-spacing:-.01em}
+.doc-render h2{font-size:16px;font-weight:600;color:var(--ink);margin:26px 0 8px}
+.doc-render p{margin:10px 0}
+.doc-render ul{margin:10px 0;padding-left:20px}
+.doc-render li{margin:5px 0}
+.doc-render code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);
+  padding:2px 6px;border-radius:5px;color:var(--cool);border:1px solid var(--line)}
+.doc-render .frontmatter{font-family:var(--mono);font-size:11.5px;color:var(--faint);
+  border-left:2px solid var(--line-2);padding:4px 0 4px 14px;margin:0 0 20px}
+
+/* decision record */
+.dr{display:flex;flex-direction:column;gap:18px}
+.dr-block .lbl{margin-bottom:7px;display:block}
+.dr-block p{margin:0;font-size:14.5px;line-height:1.65;color:var(--ink)}
+.dr-block.ctx p{color:var(--mute)}
+.dr-tags{display:flex;gap:10px}
+.tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  padding:4px 9px;border-radius:6px;border:1px solid var(--line-2);color:var(--mute)}
+.tag.major{color:var(--gate);border-color:var(--gate-line)}
+.tag.proposed{color:var(--cool);border-color:rgba(90,166,189,.4)}
+
+/* mockup preview */
+.mock-frame{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--panel-2)}
+.mock-frame .bar{display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.mock-frame .bar i{width:9px;height:9px;border-radius:50%;background:var(--line-2)}
+.mock-frame .bar span{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:8px}
+.mock-body{padding:0;height:220px;display:grid;place-items:center;position:relative;
+  background:
+    linear-gradient(0deg,rgba(242,166,60,.05),transparent),
+    repeating-linear-gradient(135deg,var(--panel-2),var(--panel-2) 14px,var(--panel) 14px,var(--panel) 28px)}
+.mock-body .note{font-family:var(--mono);font-size:12px;color:var(--mute);background:var(--void);
+  padding:10px 16px;border:1px solid var(--line-2);border-radius:8px}
+.mock-open{display:inline-flex;align-items:center;gap:8px;margin-top:14px;font-family:var(--mono);
+  font-size:12px;color:var(--cool);text-decoration:none}
+.mock-open:hover{color:var(--gate)}
+
+/* question preview */
+.q-body{font-size:16px;line-height:1.6;color:var(--ink);max-width:64ch}
+.q-opts{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.q-opt{display:flex;gap:12px;padding:13px 15px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--panel);cursor:pointer;transition:border-color .15s,background .15s}
+.q-opt:hover{border-color:var(--line-2);background:var(--panel-2)}
+.q-opt.pick{border-color:var(--gate-line);background:var(--gate-glow)}
+.q-opt .key{font-family:var(--mono);font-size:12px;color:var(--gate);flex:0 0 auto;
+  width:22px;height:22px;border:1px solid var(--gate-line);border-radius:6px;display:grid;place-items:center}
+.q-opt .qt{font-size:14px;line-height:1.5}
+.q-opt .qt b{color:var(--ink)} .q-opt .qt span{color:var(--faint)}
+
+/* ── decision bar (approve-in-place) ───────────────────────────────────── */
+.decision-bar{flex:0 0 auto;border-top:1px solid var(--line-2);background:var(--panel);
+  padding:16px 30px;display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 -18px 40px -30px rgba(0,0,0,.8)}
+.note-row{position:relative}
+.note-row textarea{width:100%;resize:none;height:44px;padding:11px 14px;
+  background:var(--void);border:1px solid var(--line);border-radius:8px;color:var(--ink);
+  font-family:var(--sans);font-size:13.5px;line-height:1.4;transition:height .18s,border-color .15s}
+.note-row textarea:focus{outline:none;border-color:var(--cool);height:72px}
+.note-row textarea::placeholder{color:var(--faint)}
+.note-row label{position:absolute;top:-8px;left:11px;background:var(--panel);padding:0 6px}
+.act-row{display:flex;align-items:center;gap:14px}
+.cmd-hint{flex:1;min-width:0;font-family:var(--mono);font-size:11px;color:var(--faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmd-hint .prompt{color:var(--cool-deep)}
+.cmd-hint b{color:var(--mute);font-weight:500}
+.btn{border-radius:9px;font-size:13.5px;font-weight:600;padding:11px 18px;
+  border:1px solid transparent;transition:transform .1s,filter .15s,background .15s,color .15s}
+.btn:active{transform:translateY(1px)}
+.btn-secondary{background:transparent;border-color:var(--line-2);color:var(--hold)}
+.btn-secondary:hover{border-color:var(--hold);background:rgba(208,118,90,.07)}
+/* the one warm, bold act */
+.btn-approve{position:relative;overflow:hidden;color:var(--void);border:none;
+  background:linear-gradient(150deg,var(--gate-bright),var(--gate));
+  box-shadow:0 4px 18px -6px var(--gate-glow),0 0 0 1px rgba(242,166,60,.4) inset;
+  min-width:150px;letter-spacing:.01em}
+.btn-approve:hover{filter:brightness(1.06)}
+.btn-approve .fill{position:absolute;inset:0;background:rgba(255,255,255,.28);
+  transform:scaleX(0);transform-origin:left;transition:transform .34s cubic-bezier(.4,0,.2,1)}
+.btn-approve.commit .fill{transform:scaleX(1)}
+.btn-approve .k{position:relative}
+
+/* empty / cleared state — an invitation, not mood */
+.empty{flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:40px;gap:14px}
+.empty.show{display:flex}
+.empty .line-mark{width:52px;height:52px;border-radius:14px;border:1px solid var(--line-2);
+  display:grid;place-items:center;color:var(--sage);position:relative}
+.empty .line-mark::after{content:"";width:22px;height:2px;background:var(--sage);
+  box-shadow:0 0 12px rgba(104,160,132,.5)}
+.empty h2{font-size:19px;font-weight:600;margin:0;color:var(--ink)}
+.empty p{margin:0;color:var(--faint);font-size:13.5px;max-width:36ch;line-height:1.5}
+
+/* placeholder when nothing selected but queue not empty */
+.pick-prompt{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:40px;gap:12px;color:var(--faint)}
+.pick-prompt .lbl{color:var(--faint)}
+.pick-prompt p{margin:0;font-size:14px;max-width:34ch;line-height:1.5}
+
+/* toast */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(14px);
+  background:var(--panel);border:1px solid var(--gate-line);border-radius:10px;
+  padding:12px 18px;display:flex;align-items:center;gap:11px;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;z-index:20;box-shadow:0 12px 40px -12px rgba(0,0,0,.7)}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.toast .tk{width:8px;height:8px;border-radius:50%;background:var(--gate);box-shadow:0 0 10px var(--gate)}
+.toast .tt{font-size:13px;color:var(--ink)}
+.toast .tt code{font-family:var(--mono);font-size:11.5px;color:var(--cool)}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+  .live .beacon{animation:none}
+}
+@media (max-width:900px){
+  body{overflow:auto;height:auto}
+  .body{grid-template-columns:1fr}
+  .gate{border-right:none;border-bottom:1px solid var(--line)}
+  .legend{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="mark">emctl<span class="chev">▸</span><span class="seg">approvals</span>
+      <small>the line</small></div>
+    <div class="spacer"></div>
+    <div class="legend" aria-hidden="true">
+      <span class="k"><i class="swatch machine"></i>machine work</span>
+      <span class="k"><i class="swatch human"></i>your call</span>
+    </div>
+    <span class="live"><span class="beacon"></span>synced 12s ago</span>
+    <div class="who"><span>Tyler · architect</span><span class="av">TD</span></div>
+  </header>
+
+  <div class="body">
+    <!-- ── the gate: queue rail ─────────────────────────────────────────── -->
+    <nav class="gate" aria-label="Approval queue">
+      <div class="gate-head">
+        <div class="gate-count">
+          <span class="n" id="count" aria-live="polite">6</span>
+          <span class="cap"><b>held at the line</b><span>work that stopped for you</span></span>
+        </div>
+        <div class="gate-sub">
+          <span>oldest <b>3h</b></span>
+          <span>tokens spent <b>642k</b></span>
+          <span>across <b>2</b> projects</span>
+        </div>
+      </div>
+      <ol class="queue" id="queue" role="listbox" aria-label="Items awaiting your decision" tabindex="0"></ol>
+    </nav>
+
+    <!-- ── detail / inline artifact preview ─────────────────────────────── -->
+    <main class="detail" aria-label="Item review">
+      <div class="detail-scroll" id="scroll">
+        <div class="pick-prompt" id="prompt">
+          <span class="lbl">nothing open</span>
+          <p>Pick an item from the line to review its artifact here, then approve or send it back without leaving the page.</p>
+        </div>
+        <div id="detailBody" hidden></div>
+      </div>
+      <div class="empty" id="empty">
+        <div class="line-mark"></div>
+        <h2>The line is clear</h2>
+        <p>Nothing is waiting on you. The team keeps working; new items dock here when they need your call.</p>
+      </div>
+      <div class="decision-bar" id="bar" hidden>
+        <div class="note-row">
+          <label class="lbl" for="note">note (optional)</label>
+          <textarea id="note" placeholder="A line of reasoning for the record — attached to your decision."></textarea>
+        </div>
+        <div class="act-row">
+          <div class="cmd-hint" id="cmd"><span class="prompt">$</span> emctl …</div>
+          <button class="btn btn-secondary" id="btnSecondary">Request changes</button>
+          <button class="btn btn-approve" id="btnApprove"><span class="fill"></span><span class="k">Approve</span></button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span class="tk"></span><span class="tt" id="toastText"></span>
+</div>
+
+<script>
+"use strict";
+/* Sample data grounded in the real emctl schema + current platform/plant-log
+   state (schema.sql, emctl status/task/decision/artifact). The awaiting_tyler
+   queue is empty in reality right now; this mockup shows it populated — which
+   is the whole point of the surface. Token costs are real run costs. */
+const esc = s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+const ITEMS = [
+  {
+    id:"pr-6", type:"pr", badge:"PR · diff", project:"plant-log",
+    title:"Backend auth + test hardening — enforce OIDC issuer & email_verified",
+    role:"implementer-backend", model:"execute", tokens:127757, waiting:"3h",
+    branch:"feat/auth-hardening", pr:6, risk:"medium",
+    primary:"Approve", secondary:"Request changes",
+    cmd:'emctl pr update 6 --tyler-decision approve --by tyler',
+    reviews:[
+      {verdict:"approve", role:"reviewer-security", model:"opus-4.8",
+       text:"Issuer pinned to <em>accounts.google.com</em> and <em>email_verified</em> now required before the allow-list check. DEV_AUTH bypass is gated to non-prod and asserted off by default. No token left in client reach."},
+      {verdict:"concerns", role:"reviewer-qa", model:"sonnet-4.6",
+       text:"Real-path test still mocks the JWKS fetch, so key-rotation isn’t exercised. Acceptable for merge, but file a follow-up."},
+    ],
+    strongest:"401 assertions cover PATCH/DELETE but the /history 401 path is untested — a regression there would ship silently.",
+    em:"<b>Two reviewers, no blocks.</b> Security approves; QA raises one concern (untested /history 401 path) it judged non-blocking. The diff enforces issuer + email_verified and keeps the dev bypass out of prod. Recommend approve with a follow-up task for the /history 401 assertion.",
+    preview:{kind:"diff", file:"app/auth.py", add:14, del:5, lines:[
+      {t:"hunk", n:"", s:"@@ -22,11 +22,20 @@ async def verify_token(token: str) -> User:"},
+      {t:"ctx", n:"22", s:"    claims = jwt.decode(token, key, algorithms=[\"RS256\"],"},
+      {t:"del", n:"23", s:"                        audience=settings.oidc_client_id)"},
+      {t:"add", n:"23", s:"                        audience=settings.oidc_client_id,"},
+      {t:"add", n:"24", s:"                        issuer=\"https://accounts.google.com\")"},
+      {t:"add", n:"25", s:""},
+      {t:"add", n:"26", s:"    if not claims.get(\"email_verified\", False):"},
+      {t:"add", n:"27", s:"        raise HTTPException(401, \"email not verified\")"},
+      {t:"ctx", n:"28", s:""},
+      {t:"ctx", n:"29", s:"    email = claims[\"email\"]"},
+      {t:"del", n:"30", s:"    if email not in ALLOW_LIST:"},
+      {t:"del", n:"31", s:"        raise HTTPException(403)"},
+      {t:"add", n:"32", s:"    if email not in settings.allow_list:"},
+      {t:"add", n:"33", s:"        raise HTTPException(403, \"not on the household allow-list\")"},
+      {t:"ctx", n:"34", s:""},
+      {t:"ctx", n:"35", s:"    return await get_or_create_user(email)"},
+    ]},
+  },
+  {
+    id:"pr-7", type:"pr", badge:"PR · diff", project:"plant-log",
+    title:"CI gate — ruff, mypy, pytest+coverage, pip-audit, migration round-trip",
+    role:"implementer-devops", model:"execute", tokens:96111, waiting:"1h",
+    branch:"ci/plant-log-gate", pr:7, risk:"medium", flag:"touches .github/workflows",
+    primary:"Approve", secondary:"Request changes",
+    cmd:'emctl pr update 7 --tyler-decision approve --by tyler',
+    reviews:[
+      {verdict:"concerns", role:"reviewer-security", model:"opus-4.8",
+       text:"Workflow added under the governed devops exception. Third-party actions are pinned by full commit SHA — good — but confirm the pins match the tags you intend. This is the one file only you and devops may touch."},
+    ],
+    strongest:"A workflow change is the highest-blast-radius diff in the repo; verify the pinned SHAs before this runs with repo credentials.",
+    em:"<b>Governed exception in play.</b> This adds <code>.github/workflows/ci.yml</code>, which only implementer-devops may author. Security signed off on the shape and confirmed SHA-pinned actions, but flagged that <b>you should eyeball the pins</b>. No other reviewer blocks.",
+    preview:{kind:"diff", file:".github/workflows/ci.yml", add:31, del:0, lines:[
+      {t:"hunk", n:"", s:"@@ -0,0 +1,31 @@ new file"},
+      {t:"add", n:"1", s:"name: ci"},
+      {t:"add", n:"2", s:"on: { pull_request: {}, push: { branches: [main] } }"},
+      {t:"add", n:"3", s:"jobs:"},
+      {t:"add", n:"4", s:"  gate:"},
+      {t:"add", n:"5", s:"    runs-on: ubuntu-latest"},
+      {t:"add", n:"6", s:"    steps:"},
+      {t:"add", n:"7", s:"      - uses: actions/checkout@11bd719  # v4.2.2"},
+      {t:"add", n:"8", s:"      - uses: astral-sh/setup-uv@f0ec1fc  # v6.0.1"},
+      {t:"add", n:"9", s:"      - run: uv sync --frozen"},
+      {t:"add", n:"10", s:"      - run: uv run ruff check ."},
+      {t:"add", n:"11", s:"      - run: uv run mypy app"},
+      {t:"add", n:"12", s:"      - run: uv run pytest --cov=app --cov-fail-under=85"},
+      {t:"add", n:"13", s:"      - run: uv run pip-audit"},
+    ]},
+  },
+  {
+    id:"dec-12", type:"decision", badge:"decision", project:"platform",
+    title:"emctl approval surface is a served SPA, not CLI-only",
+    role:"em", model:"plan", tokens:41200, waiting:"20m",
+    primary:"Accept decision", secondary:"Send back",
+    cmd:'emctl decision update 12 --status accepted',
+    preview:{kind:"decision",
+      significance:"major", status:"proposed",
+      context:"The awaiting_tyler queue is reviewable from the CLI, but reviewing a diff, a rendered doc, and a mockup in a terminal is slow and lossy. This decision commits to a thin served UI for approvals specifically.",
+      decision:"Ship a small Vite+React SPA served by the emctl API for the approval surface only. It reads the same state emctl writes; approve/request-changes call the same commands. The CLI remains the source of truth and the fallback; the SPA never becomes a second control plane."},
+  },
+  {
+    id:"doc-sf", type:"doc", badge:"doc · markdown", project:"platform",
+    title:"docs/stack-frontend.md — first draft",
+    role:"implementer-frontend", model:"execute", tokens:58984, waiting:"yesterday",
+    branch:"docs/stack-frontend", pr:15,
+    primary:"Approve", secondary:"Request changes",
+    cmd:'emctl artifact update 3 --status approved',
+    preview:{kind:"doc", md:`FRONTMATTER type: spec · status: proposed · authored once, referenced not copied
+# Frontend stack — conventions
+
+The long-form companion to the \`Frontend stack\` decision (Vite + React + TypeScript + Tailwind, Vitest + Testing Library). This is the rulebook implementers build to.
+
+## Types come from the contract
+API response types are generated or derived from the OpenAPI schema — never hand-declared duplicates that drift. A type that isn't traceable to the contract is a defect.
+
+## Every consumed endpoint handles its failure modes
+Loading and error states are not optional polish. A view that only renders the happy path is not done. Follow the repo's established loading/error pattern.
+
+## Accessibility floor
+Semantic elements, labeled inputs, keyboard reachability, visible focus. Reviewed on everything.
+
+## Nothing environment-specific in client code
+Config comes through the established path. Everything shipped to a browser is public.`},
+  },
+  {
+    id:"art-9", type:"mockup", badge:"mockup", project:"platform",
+    title:"emctl approval surface — mockup v1",
+    role:"implementer-frontend", model:"local", tokens:52310, waiting:"just now",
+    branch:"design/emctl-approval-mockup", pr:16,
+    primary:"Approve as build spec", secondary:"Request changes",
+    cmd:'emctl artifact update 9 --status approved --notes "build spec"',
+    preview:{kind:"mockup", path:"docs/design/emctl-approval-mockup-v1.html",
+      note:"This very screen. Approving a mockup turns it into the build spec for the frontend implementer — the same flow that produced plant-log."},
+  },
+  {
+    id:"q-4", type:"question", badge:"question", project:"plant-log",
+    title:"Does “Approve” on a PR merge for you, or only record your decision?",
+    role:"em", model:"plan", tokens:12040, waiting:"3h", blocking:true,
+    primary:"Send answer", secondary:null,
+    cmd:'emctl question answer 4 --answer "…"',
+    preview:{kind:"question",
+      body:"Branch protection makes you the only merger. So when you press Approve on a PR here, what should happen?",
+      opts:[
+        {k:"A", t:"<b>Record + merge via API.</b> <span>Approve calls the GitHub merge API on your behalf. One press, done — but the UI holds real merge rights.</span>"},
+        {k:"B", t:"<b>Record only, you merge on GitHub.</b> <span>Approve writes your decision to state and links you out to merge. Slower, keeps the merge button in one place.</span>"},
+        {k:"C", t:"<b>Record + queue.</b> <span>Approve marks it ready; a separate deliberate “merge cleared” action does the merge, so review and merge stay distinct acts.</span>"},
+      ]},
+  },
+];
+
+const $ = s => document.querySelector(s);
+const queue = $("#queue"), detailBody = $("#detailBody"), prompt = $("#prompt"),
+      bar = $("#bar"), empty = $("#empty"), scroll = $("#scroll"),
+      note = $("#note"), cmd = $("#cmd"), btnA = $("#btnApprove"), btnS = $("#btnSecondary"),
+      countEl = $("#count"), toast = $("#toast"), toastText = $("#toastText");
+let current = null;
+const fmtTok = n => n>=1000 ? (n/1000).toFixed(n>=100000?0:1)+"k" : String(n);
+
+/* ── build the queue ─────────────────────────────────────────────────── */
+function renderQueue(){
+  queue.innerHTML = "";
+  ITEMS.forEach((it,i)=>{
+    const li = document.createElement("li");
+    li.className = "card"; li.tabIndex = 0; li.dataset.id = it.id;
+    li.setAttribute("role","option");
+    li.style.animationDelay = (i*0.05)+"s";
+    const risk = it.risk ? `<span class="m"><span class="dot ${it.risk==='high'?'hi':it.risk==='medium'?'md':'lo'}"></span>${it.risk} risk</span>` : "";
+    const flag = it.flag ? `<span class="flag">${esc(it.flag)}</span>` : "";
+    const blk = it.blocking ? `<span class="flag">blocking</span>` : "";
+    li.innerHTML = `
+      <div class="card-top">
+        <span class="badge ${it.type}">${esc(it.badge)}</span>
+        <span class="proj">${esc(it.project)}</span>
+      </div>
+      <p class="card-title">${esc(it.title)}</p>
+      <div class="card-meta">
+        <span class="m">${esc(it.role)}</span>
+        <span class="m"><b>${fmtTok(it.tokens)}</b> tok</span>
+        <span class="m">waited <b>${esc(it.waiting)}</b></span>
+        ${risk}${flag}${blk}
+      </div>`;
+    li.addEventListener("click",()=>select(it.id));
+    li.addEventListener("keydown",e=>{
+      if(e.key==="Enter"||e.key===" "){e.preventDefault();select(it.id);}
+    });
+    queue.appendChild(li);
+  });
+  countEl.textContent = ITEMS.length;
+}
+
+/* ── previews per artifact type ──────────────────────────────────────── */
+function previewHTML(it){
+  const p = it.preview;
+  if(p.kind==="diff"){
+    const rows = p.lines.map(l=>{
+      const cls = l.t==="add"?"add":l.t==="del"?"del":l.t==="hunk"?"hunk":"";
+      const sign = l.t==="add"?"+":l.t==="del"?"-":" ";
+      return `<div class="dl ${cls}"><span class="gut">${l.n||""}</span><span class="txt">${esc(sign+" "+l.s)}</span></div>`;
+    }).join("");
+    return `<div class="diff">
+      <div class="diff-file"><span class="path">${esc(p.file)}</span>
+        <span class="stat"><span class="a">+${p.add}</span><span class="d">−${p.del}</span></span></div>
+      <pre>${rows}</pre></div>`;
+  }
+  if(p.kind==="doc"){
+    let html = esc(p.md)
+      .replace(/^FRONTMATTER (.+)$/m,'<div class="frontmatter">$1</div>')
+      .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+      .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+      .replace(/`([^`]+)`/g,'<code>$1</code>')
+      .split(/\n{2,}/).map(b=>/^<(h1|h2|div)/.test(b)?b:`<p>${b.replace(/\n/g,' ')}</p>`).join("");
+    return `<div class="doc-render">${html}</div>`;
+  }
+  if(p.kind==="decision"){
+    return `<div class="dr">
+      <div class="dr-tags"><span class="tag proposed">${esc(p.status)}</span>
+        <span class="tag major">${esc(p.significance)}</span></div>
+      <div class="dr-block ctx"><span class="lbl">context</span><p>${esc(p.context)}</p></div>
+      <div class="dr-block"><span class="lbl">decision</span><p>${esc(p.decision)}</p></div>
+    </div>`;
+  }
+  if(p.kind==="mockup"){
+    return `<div class="mock-frame">
+      <div class="bar"><i></i><i></i><i></i><span>${esc(p.path)}</span></div>
+      <div class="mock-body"><span class="note">inline preview renders here</span></div>
+    </div>
+    <p style="color:var(--mute);font-size:13.5px;line-height:1.6;margin:16px 0 0;max-width:60ch">${esc(p.note)}</p>
+    <a class="mock-open" href="#">open full artifact ↗</a>`;
+  }
+  if(p.kind==="question"){
+    const opts = p.opts.map(o=>`<div class="q-opt" tabindex="0" role="radio" aria-checked="false">
+      <span class="key">${o.k}</span><span class="qt">${o.t}</span></div>`).join("");
+    return `<p class="q-body">${esc(p.body)}</p><div class="q-opts">${opts}</div>`;
+  }
+  return "";
+}
+
+function reviewsHTML(it){
+  if(!it.reviews) return "";
+  const rows = it.reviews.map(r=>`
+    <div class="rev"><span class="vd ${r.verdict}">${r.verdict}</span>
+      <div class="rbody"><div class="rrole">${esc(r.role)}<span class="model">${esc(r.model)}</span></div>
+        <div class="robj">${r.text}</div></div></div>`).join("");
+  return `<section class="section"><span class="lbl">review panel · strongest objection surfaced</span>
+    <div class="panel-strip">${rows}</div>
+    <div class="em-summary" style="margin-top:14px">${it.em}</div>
+    <div style="margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--rose)">
+      ↳ strongest objection · ${esc(it.strongest)}</div></section>`;
+}
+
+/* ── select + render detail ──────────────────────────────────────────── */
+function select(id){
+  const it = ITEMS.find(x=>x.id===id); if(!it) return;
+  current = it;
+  [...queue.children].forEach(c=>c.classList.toggle("sel",c.dataset.id===id));
+  prompt.hidden = true; detailBody.hidden = false; bar.hidden = false;
+
+  const previewLabel = {pr:"diff",decision:"decision record",doc:"rendered document",
+    mockup:"artifact preview",question:"decision needed"}[it.type];
+  const links = [];
+  if(it.pr) links.push(`<div class="field"><span class="lbl">pull request</span><span class="v"><a href="#">#${it.pr} ↗</a></span></div>`);
+  if(it.branch) links.push(`<div class="field"><span class="lbl">branch</span><span class="v"><a href="#">${esc(it.branch)}</a></span></div>`);
+
+  detailBody.innerHTML = `
+    <div class="dhead">
+      <div class="dhead-top"><span class="badge ${it.type}">${esc(it.badge)}</span>
+        <span class="proj mono" style="color:var(--faint);font-size:12px">${esc(it.project)}</span></div>
+      <h1 class="dtitle">${esc(it.title)}</h1>
+      <div class="dmeta">
+        <div class="field"><span class="lbl">produced by</span><span class="v role">${esc(it.role)} · ${esc(it.model)}</span></div>
+        <div class="field"><span class="lbl">run cost</span><span class="v">${it.tokens.toLocaleString()} tok</span></div>
+        <div class="field"><span class="lbl">waiting</span><span class="v">${esc(it.waiting)}</span></div>
+        ${it.risk?`<div class="field"><span class="lbl">risk</span><span class="v" style="color:${it.risk==='high'?'var(--rose)':it.risk==='medium'?'var(--sand)':'var(--sage)'}">${it.risk}</span></div>`:""}
+        ${links.join("")}
+      </div>
+    </div>
+    ${reviewsHTML(it)}
+    <section class="section"><span class="lbl">${previewLabel}</span>${previewHTML(it)}</section>`;
+
+  // decision bar adapts to the item type
+  btnA.querySelector(".k").textContent = it.primary;
+  if(it.secondary){ btnS.style.display=""; btnS.textContent = it.secondary; }
+  else btnS.style.display="none";
+  cmd.innerHTML = `<span class="prompt">$</span> ${esc(it.cmd)}`;
+  note.value=""; btnA.classList.remove("commit");
+  scroll.scrollTop = 0;
+
+  // wire question option radios
+  detailBody.querySelectorAll(".q-opt").forEach(o=>{
+    const pick=()=>{detailBody.querySelectorAll(".q-opt").forEach(x=>{x.classList.remove("pick");x.setAttribute("aria-checked","false");});
+      o.classList.add("pick");o.setAttribute("aria-checked","true");};
+    o.addEventListener("click",pick);
+    o.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();pick();}});
+  });
+}
+
+/* ── approve-in-place: a single deliberate, well-lit act ─────────────── */
+function approve(){
+  if(!current) return;
+  const it = current;
+  btnA.classList.add("commit");                       // fill sweeps left→right
+  const card = queue.querySelector(`[data-id="${it.id}"]`);
+  if(card) card.classList.add("approving");           // tick on the rail lights amber
+  showToast(`${it.primary} · <code>${esc(it.cmd)}</code>`);
+  setTimeout(()=>{
+    if(card){ card.classList.add("cleared"); }        // item clears the line
+    const idx = ITEMS.findIndex(x=>x.id===it.id);
+    if(idx>-1) ITEMS.splice(idx,1);
+    setTimeout(()=>{
+      if(card) card.remove();
+      countEl.textContent = ITEMS.length;
+      countEl.classList.toggle("clearing", ITEMS.length===0);
+      current=null;
+      if(ITEMS.length===0){
+        detailBody.hidden=true; bar.hidden=true; prompt.hidden=true; empty.classList.add("show");
+      } else {
+        detailBody.hidden=true; bar.hidden=true; prompt.hidden=false;
+      }
+    },320);
+  },360);
+}
+function sendBack(){
+  if(!current) return;
+  showToast(`${current.secondary} · a note was sent to ${esc(current.role)}`);
+  btnS.animate?.([{transform:"translateX(0)"},{transform:"translateX(-4px)"},{transform:"translateX(0)"}],{duration:180});
+}
+
+let toastT;
+function showToast(html){
+  toastText.innerHTML = html; toast.classList.add("show");
+  clearTimeout(toastT); toastT=setTimeout(()=>toast.classList.remove("show"),3200);
+}
+
+btnA.addEventListener("click",approve);
+btnS.addEventListener("click",sendBack);
+
+/* queue keyboard nav: ↑/↓ move, Enter selects (handled per-card) */
+queue.addEventListener("keydown",e=>{
+  const cards=[...queue.querySelectorAll(".card")]; if(!cards.length) return;
+  const active=document.activeElement.closest?.(".card");
+  let i=cards.indexOf(active);
+  if(e.key==="ArrowDown"){e.preventDefault(); cards[Math.min(i+1,cards.length-1)]?.focus();}
+  if(e.key==="ArrowUp"){e.preventDefault(); cards[Math.max(i-1,0)]?.focus();}
+});
+
+renderQueue();
+/* Open on the first item so the expanded review state is visible on load;
+   the queue view is the left rail, always present. */
+select("pr-6");
+</script>
+</body>
+</html>
