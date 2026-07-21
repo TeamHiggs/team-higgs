@@ -11,6 +11,8 @@
 --
 -- v2.2 (command-center, migrations 0005/0006): `tasks.groom_rank` (backlog
 -- ordering) and the append-only `notes` table, both additive and reversible.
+-- v2.3 (command-center, migration 0007): `prs.tyler_note` / `decisions.tyler_note`
+-- persist Tyler's approve/reject rationale (audit trail), additive + reversible.
 --
 -- Postgres. CHECK constraints instead of enums for cheap evolution;
 -- promote to types if churn settles.
@@ -83,6 +85,7 @@ CREATE TABLE prs (
     tyler_decision TEXT,
     decided_at     TIMESTAMPTZ,
     task_id        INT REFERENCES tasks(id),  -- schema v2 (0003): task this PR implements
+    tyler_note     TEXT,          -- schema v2.3 (0007): Tyler's decide rationale (audit)
     UNIQUE (project_id, github_pr)
 );
 
@@ -121,6 +124,7 @@ CREATE TABLE decisions (
     significance  TEXT NOT NULL DEFAULT 'major'
                   CHECK (significance IN ('major','minor')),
     superseded_by INT REFERENCES decisions(id),
+    tyler_note    TEXT,          -- schema v2.3 (0007): Tyler's decide rationale (audit)
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

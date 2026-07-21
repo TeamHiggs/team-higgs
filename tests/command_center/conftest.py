@@ -103,6 +103,14 @@ def no_token_client(fake_verifier: _FakeVerifier) -> Iterator[TestClient]:
         yield c
 
 
+@pytest.fixture
+def dev_off_client(fake_verifier: _FakeVerifier) -> Iterator[TestClient]:
+    """Client with ``DEV_AUTH`` off, to assert the dev-login and docs surfaces
+    are fenced off (404) when the flag is not set."""
+    with _build_client(_test_settings(DEV_AUTH=False), fake_verifier, None) as c:
+        yield c
+
+
 def login(client: TestClient, email: str = ALLOWED_EMAIL, name: str = "Tyler") -> None:
     resp = client.post("/api/auth/dev-login", json={"email": email, "name": name})
     assert resp.status_code == 200, resp.text

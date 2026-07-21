@@ -11,7 +11,7 @@ from __future__ import annotations
 from functools import cached_property, lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The repo root, used to resolve artifact files for inline preview. The service
@@ -51,8 +51,11 @@ class Settings(BaseSettings):
     # only, per decision #17; comma-separated for config flexibility.
     allowed_emails_raw: str = Field(default="", alias="ALLOWED_EMAILS")
 
-    # Dev-only fake login + docs exposure. Never enabled unless explicitly set;
-    # asserted off in prod by deployment (PRD §6).
+    # Dev-only fake login + docs exposure. Never enabled unless explicitly set,
+    # and fail-closed in code: refused at startup when a production signal
+    # (a configured GOOGLE_CLIENT_ID) is present -- see the validator below, so
+    # a stray DEV_AUTH=1 in prod raises rather than silently arming the
+    # OIDC-bypassing dev-login (PRD §6).
     dev_auth: bool = Field(False, alias="DEV_AUTH")
 
     # Least-privilege GitHub token (merge-only, on the two repos) injected from
@@ -60,6 +63,24 @@ class Settings(BaseSettings):
     # endpoint degrades cleanly (503, no crash) rather than merging.
     github_token: str = Field("", alias="GITHUB_TOKEN")
     github_api_url: str = Field("https://api.github.com", alias="GITHUB_API_URL")
+
+    @model_validator(mode="after")
+    def _dev_auth_fails_closed(self) -> Settings:
+        """Refuse the OIDC-bypass dev-login when a production signal is present.
+
+        ``DEV_AUTH`` arms an unauthenticated session-minting route; a configured
+        ``GOOGLE_CLIENT_ID`` means real OIDC is wired up, i.e. this is a
+        real/production deployment. The two are mutually exclusive, and this is
+        enforced in code (raised at startup) rather than trusting deployment not
+        to set the flag.
+        """
+        if self.dev_auth and self.google_client_id.strip():
+            raise ValueError(
+                "DEV_AUTH must not be enabled when GOOGLE_CLIENT_ID is "
+                "configured: the dev-login bypasses OIDC and cannot run in a "
+                "deployment that has real sign-in wired up."
+            )
+        return self
 
     @cached_property
     def allowed_emails(self) -> tuple[str, ...]:

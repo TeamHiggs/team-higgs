@@ -57,6 +57,41 @@ def test_reject_pr_sets_decision_and_status(client: TestClient) -> None:
     assert row["status"] == "rejected"
 
 
+def test_pr_decision_persists_rationale(client: TestClient) -> None:
+    login(client)
+    pid = seed.project()
+    pr_id = seed.pr(pid, github_pr=14)
+    resp = client.post(
+        "/api/approvals/decision",
+        json={
+            "kind": "pr",
+            "id": pr_id,
+            "verdict": "approve",
+            "note": "reviews clean; merging",
+        },
+    )
+    assert resp.status_code == 200
+    assert seed.get_pr(pr_id)["tyler_note"] == "reviews clean; merging"
+
+
+def test_decision_decision_persists_rationale(client: TestClient) -> None:
+    login(client)
+    did = seed.decision(title="use OIDC")
+    resp = client.post(
+        "/api/approvals/decision",
+        json={
+            "kind": "decision",
+            "id": did,
+            "verdict": "reject",
+            "note": "defer until infra #29 lands",
+        },
+    )
+    assert resp.status_code == 200
+    row = seed.get_decision(did)
+    assert row["status"] == "reversed"
+    assert row["tyler_note"] == "defer until infra #29 lands"
+
+
 def test_decision_on_missing_pr_is_404(client: TestClient) -> None:
     login(client)
     resp = client.post(

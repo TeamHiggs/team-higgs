@@ -29,6 +29,12 @@ COPY alembic.ini ./
 # Reinstall so the console script + package metadata pick up the full source.
 RUN pip install --no-deps ".[web]"
 
+# Drop root: the service needs no write access to its own source or the
+# install prefix, so run it as an unprivileged account (defence in depth for
+# the ingress-locked Cloud Run surface, infra task #29).
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+
 EXPOSE 8080
 # Cloud Run provides $PORT; default to 8080 for local runs.
 CMD ["sh", "-c", "uvicorn command_center.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

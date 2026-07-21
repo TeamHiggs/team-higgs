@@ -125,3 +125,11 @@ def get_task(task_id: int) -> dict[str, Any]:
 def get_pr(pr_id: int) -> dict[str, Any]:
     with transaction() as conn:
         return prs.get(conn, pr_id)
+
+
+def get_decision(decision_id: int) -> dict[str, Any]:
+    with transaction() as conn:
+        rows = decisions.list_(
+            conn, project_id=None, significance=None, status=None
+        )
+    return next(r for r in rows if int(r["id"]) == decision_id)

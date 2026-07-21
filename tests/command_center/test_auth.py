@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from command_center.auth.oidc import OIDCIdentity
+from command_center.config import Settings
 from tests.command_center.conftest import (
     ALLOWED_EMAIL,
     DENIED_EMAIL,
@@ -116,3 +119,27 @@ def test_dev_login_not_in_openapi_and_docs_open_in_dev(client: TestClient) -> No
     schema = client.get("/openapi.json").json()
     assert "/api/auth/dev-login" not in schema["paths"]
     assert "/api/approvals" in schema["paths"]
+
+
+def test_dev_auth_off_fences_devlogin_and_docs(dev_off_client: TestClient) -> None:
+    # With DEV_AUTH off, the dev-login route and the docs/schema surfaces are
+    # all 404 -- neither the OIDC bypass nor the info-disclosure surface exists.
+    assert (
+        dev_off_client.post(
+            "/api/auth/dev-login", json={"email": ALLOWED_EMAIL}
+        ).status_code
+        == 404
+    )
+    assert dev_off_client.get("/docs").status_code == 404
+    assert dev_off_client.get("/openapi.json").status_code == 404
+
+
+def test_dev_auth_refused_with_production_oidc_signal() -> None:
+    # Fail-closed: DEV_AUTH may not coexist with a configured GOOGLE_CLIENT_ID
+    # (a production OIDC signal); Settings raises at construction/startup.
+    with pytest.raises(ValidationError):
+        Settings(
+            SESSION_SECRET="x",  # type: ignore[call-arg]
+            DEV_AUTH=True,
+            GOOGLE_CLIENT_ID="real-client-id.apps.googleusercontent.com",
+        )

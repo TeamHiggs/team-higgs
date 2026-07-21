@@ -210,6 +210,21 @@ def test_0006_notes_single_step_round_trips() -> None:
     assert "notes" in tables
 
 
+def test_0007_tyler_note_single_step_round_trips() -> None:
+    """0007's own downgrade/upgrade: prs.tyler_note and decisions.tyler_note
+    disappear at 0006 and return at head. Restores head so later tests see the
+    full schema."""
+    cfg = make_config()
+    command.downgrade(cfg, "0006")
+    with _conn() as conn:
+        assert "tyler_note" not in _columns(conn, "prs")
+        assert "tyler_note" not in _columns(conn, "decisions")
+    command.upgrade(cfg, "head")
+    with _conn() as conn:
+        assert "tyler_note" in _columns(conn, "prs")
+        assert "tyler_note" in _columns(conn, "decisions")
+
+
 def test_0003_backfill_seeds_synthetic_task_event() -> None:
     """The generic backfill seeds one `actor='backfill'` event per pre-existing
     task on upgrade — no hard-coded ids. Restores head at the end."""

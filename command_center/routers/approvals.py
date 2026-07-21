@@ -251,6 +251,8 @@ def decide(
             # PR stays 'open' on approve until the merge endpoint runs (§7).
             tyler_decision="approve" if approve else "reject",
             task_id=None,
+            # Persist Tyler's rationale for the audit trail (§7).
+            tyler_note=payload.note,
         )
     elif payload.kind == "artifact":
         artifacts.decide(
@@ -261,7 +263,10 @@ def decide(
         )
     elif payload.kind == "decision":
         decisions.decide(
-            conn, payload.id, status="accepted" if approve else "reversed"
+            conn,
+            payload.id,
+            status="accepted" if approve else "reversed",
+            note=payload.note,
         )
 
     verb = "approved" if approve else "rejected"

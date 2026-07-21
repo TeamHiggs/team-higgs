@@ -77,7 +77,6 @@ def test_block_and_unblock(client: TestClient) -> None:
     assert unblocked.status_code == 200
     assert unblocked.json()["blocked"] is False
     # Blocking is a flag, not a transition: no spurious status events.
-    assert _events(tid) == _events(tid)  # stable
     assert all(e["to_status"] != "blocked" for e in _events(tid))
 
 

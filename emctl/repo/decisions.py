@@ -54,15 +54,20 @@ def supersede(conn: Conn, old_id: int, *, new_id: int) -> Row:
     )
 
 
-def decide(conn: Conn, decision_id: int, *, status: str) -> Row:
+def decide(
+    conn: Conn, decision_id: int, *, status: str, note: str | None = None
+) -> Row:
     """Set a proposed decision's ``status`` (accepted / reversed).
 
-    Used by the command-center approval surface. The CHECK constraint on
-    ``decisions.status`` rejects an out-of-vocabulary value at the DB.
+    Used by the command-center approval surface. ``note`` records Tyler's
+    rationale for the audit trail (persisted to ``tyler_note`` when supplied).
+    The CHECK constraint on ``decisions.status`` rejects an out-of-vocabulary
+    value at the DB.
     """
-    return _sql.update(
-        conn, "decisions", "decision", decision_id, {"status": status}
-    )
+    values: dict[str, Any] = {"status": status}
+    if note is not None:
+        values["tyler_note"] = note
+    return _sql.update(conn, "decisions", "decision", decision_id, values)
 
 
 def list_(

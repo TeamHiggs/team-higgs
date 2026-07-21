@@ -67,6 +67,7 @@ def update(
     em_summary: str | None,
     tyler_decision: str | None,
     task_id: int | None,
+    tyler_note: str | None = None,
 ) -> Row:
     values: dict[str, Any] = {}
     if status is not None:
@@ -77,6 +78,8 @@ def update(
         values["em_summary"] = em_summary
     if task_id is not None:
         values["task_id"] = task_id
+    if tyler_note is not None:
+        values["tyler_note"] = tyler_note
     extra: list[Any] = []
     if tyler_decision is not None:
         values["tyler_decision"] = tyler_decision
