@@ -67,3 +67,18 @@ variable "google_redirect_uri" {
   type        = string
   default     = ""
 }
+
+# --- team-higgs command center (day-zero address bridge) ----------------------
+
+variable "higgs_command_image" {
+  description = <<-EOT
+    Fully-qualified container image for the higgs-command Cloud Run placeholder.
+    Defaults to the public Cloud Run hello image so the address bridge can stand
+    up before the real command-center app exists. The real image is delivered
+    later by `gcloud run deploy` or a CI deploy workflow into the same service;
+    Terraform ignores subsequent image changes so it never reverts a shipped
+    revision.
+  EOT
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
