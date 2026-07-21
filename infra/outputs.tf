@@ -36,3 +36,25 @@ output "secret_ids" {
     google_client_secret = google_secret_manager_secret.google_client_secret.secret_id
   }
 }
+
+# --- command center -----------------------------------------------------------
+
+output "command_center_service_name" {
+  description = "Name of the gated command-center Cloud Run service (ingress-locked; not publicly invokable)."
+  value       = google_cloud_run_v2_service.command_center.name
+}
+
+output "command_center_runtime_service_account" {
+  description = "Email of the command-center Cloud Run runtime service account (grant it as the run.invoker target from the IAP/LB service agent at fronting time)."
+  value       = google_service_account.command_center_run.email
+}
+
+output "command_center_secret_ids" {
+  description = "Secret Manager secret IDs the command-center service reads at runtime. Tyler sets the real values for the client secret and the GitHub merge token out-of-band; DATABASE_URL is set at the Phase-3 state-store migration."
+  value = {
+    session_secret       = google_secret_manager_secret.cc_session_secret.secret_id
+    google_client_secret = google_secret_manager_secret.cc_google_client_secret.secret_id
+    github_token         = google_secret_manager_secret.cc_github_token.secret_id
+    database_url         = google_secret_manager_secret.cc_database_url.secret_id
+  }
+}

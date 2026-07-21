@@ -23,3 +23,15 @@ allowed_emails = "you@example.com,partner@example.com"
 # The real image is shipped after day zero by gcloud/CI; leave the default
 # placeholder for the first apply.
 # plantlog_image = "us-docker.pkg.dev/cloudrun/container/hello"
+
+# --- command center (the REAL gated service) ---------------------------------
+# REQUIRED: the command-center OAuth Web client ID (a NEW client, separate from
+# plant-log's; NOT secret). A non-empty value both wires OIDC and arms the
+# backend's fail-closed DEV_AUTH guard, so it must never be blank.
+cc_google_client_id = "REPLACE-WITH-COMMAND-CENTER-OAUTH-CLIENT-ID"
+
+# Optional overrides (defaults shown):
+# cc_allowed_emails      = "tyler@tylerdorland.com"   # Tyler only (decision #17)
+# cc_google_redirect_uri = "https://higgs.tylerdorland.com/api/auth/callback"
+# cc_command image is shipped by gcloud/CI after first apply; leave the default:
+# command_center_image = "us-docker.pkg.dev/cloudrun/container/hello"
