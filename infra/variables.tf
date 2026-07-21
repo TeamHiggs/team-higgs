@@ -68,6 +68,12 @@ variable "google_redirect_uri" {
   default     = ""
 }
 
+variable "canonical_host" {
+  description = "Apex canonical host for the www->apex 301 (plant-log). Empty disables the redirect (local/CI/.run.app). Set to the apex domain in tfvars at cutover."
+  type        = string
+  default     = ""
+}
+
 # --- team-higgs command center (day-zero address bridge) ----------------------
 
 variable "higgs_command_image" {
