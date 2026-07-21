@@ -7,6 +7,21 @@
 #
 # Build context is the repo root:  docker build -t command-center .
 
+# ── frontend build stage (task #28) ────────────────────────────────────────
+# Compiles the Vite SPA and emits it into command_center/static, which the
+# Python image copies and FastAPI serves. Kept in a separate stage so Node and
+# node_modules never reach the runtime image.
+FROM node:22-slim AS frontend
+RUN corepack enable
+WORKDIR /build/command_center/frontend
+# Types are generated from the contract, so the schema must be in place first.
+COPY command_center/openapi.json /build/command_center/openapi.json
+COPY command_center/frontend/package.json command_center/frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY command_center/frontend/ ./
+# vite build writes to ../static -> /build/command_center/static
+RUN pnpm build
+
 FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -26,6 +41,10 @@ RUN pip install ".[web]"
 COPY emctl ./emctl
 COPY command_center ./command_center
 COPY alembic.ini ./
+# Drop in the compiled SPA from the frontend stage. FastAPI mounts it at / when
+# command_center/static/index.html exists (command_center/main.py) -- one image,
+# one deploy (PRD command-center §3).
+COPY --from=frontend /build/command_center/static ./command_center/static
 # Reinstall so the console script + package metadata pick up the full source.
 RUN pip install --no-deps ".[web]"
 
