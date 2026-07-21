@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from emctl.db import Conn
 from emctl.repo import _sql
 
 Row = _sql.Row
+
+
+def list_for_pr(conn: Conn, pr_id: int) -> list[Row]:
+    """Panel reviews for one PR, oldest first (read for the approval preview)."""
+    query = sql.SQL(
+        "SELECT * FROM reviews WHERE pr_id = %s ORDER BY id ASC"
+    )
+    return list(conn.execute(query, (pr_id,)).fetchall())
 
 
 def add(

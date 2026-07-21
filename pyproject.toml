@@ -16,6 +16,16 @@ dependencies = [
 emctl = "emctl.cli:app"
 
 [project.optional-dependencies]
+# The command-center web service (task #27). Kept out of the base install so
+# emctl (the CLI) never pulls FastAPI; the service reuses emctl's data layer.
+web = [
+    "fastapi>=0.111,<0.116",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "itsdangerous>=2.2",
+]
 dev = [
     "ruff>=0.5",
     "mypy>=1.10",
@@ -27,7 +37,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["emctl*"]
+include = ["emctl*", "command_center*"]
 
 [tool.setuptools.package-data]
 emctl = ["migrations/*.py", "migrations/versions/*.py", "migrations/*.mako"]
@@ -45,10 +55,15 @@ ignore = ["UP042"]
 [tool.ruff.lint.per-file-ignores]
 # typer.Option/Argument in argument defaults is the framework's idiom.
 "emctl/commands/*" = ["B008"]
+# FastAPI's Depends()/Query() in argument defaults is the framework's idiom.
+"command_center/*" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+# The command-center service uses Pydantic v2 models; the plugin teaches mypy
+# how BaseSettings/BaseModel construct (env-driven, defaulted fields optional).
+plugins = ["pydantic.mypy"]
 # Third-party packages without bundled type info.
 [[tool.mypy.overrides]]
 module = ["alembic.*"]

@@ -38,6 +38,26 @@ def get(conn: Conn, pr_id: int) -> Row:
     return _sql.get(conn, "prs", "pr", pr_id)
 
 
+def list_(
+    conn: Conn, *, project_id: int | None = None, status: str | None = None
+) -> list[Row]:
+    where: dict[str, Any] = {}
+    if project_id is not None:
+        where["project_id"] = project_id
+    if status is not None:
+        where["status"] = status
+    return _sql.select(conn, "prs", where=where or None)
+
+
+def list_awaiting_decision(conn: Conn) -> list[Row]:
+    """Open PRs Tyler has not yet decided -- the PR-backed approval items."""
+    query = sql.SQL(
+        "SELECT * FROM prs WHERE status = 'open' AND tyler_decision IS NULL "
+        "ORDER BY id ASC"
+    )
+    return list(conn.execute(query).fetchall())
+
+
 def update(
     conn: Conn,
     pr_id: int,
@@ -47,6 +67,7 @@ def update(
     em_summary: str | None,
     tyler_decision: str | None,
     task_id: int | None,
+    tyler_note: str | None = None,
 ) -> Row:
     values: dict[str, Any] = {}
     if status is not None:
@@ -57,6 +78,8 @@ def update(
         values["em_summary"] = em_summary
     if task_id is not None:
         values["task_id"] = task_id
+    if tyler_note is not None:
+        values["tyler_note"] = tyler_note
     extra: list[Any] = []
     if tyler_decision is not None:
         values["tyler_decision"] = tyler_decision

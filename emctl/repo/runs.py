@@ -28,6 +28,14 @@ def _token_values(tokens: dict[str, int | None]) -> dict[str, Any]:
     return {col: tokens[col] for col in TOKEN_COLUMNS if tokens.get(col) is not None}
 
 
+def list_recent(conn: Conn, *, limit: int = 50) -> list[Row]:
+    """Most recent runs first, for the read-only run-cost surface."""
+    query = sql.SQL(
+        "SELECT * FROM runs ORDER BY started_at DESC, id DESC LIMIT %s"
+    )
+    return list(conn.execute(query, (limit,)).fetchall())
+
+
 def start(
     conn: Conn, *, task_id: int | None, role: str, model: str, mode: str
 ) -> Row:

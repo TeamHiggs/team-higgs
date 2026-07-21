@@ -43,6 +43,7 @@ TABLES = [
     "retros",
     "risks",
     "task_events",
+    "notes",
 ]
 
 
