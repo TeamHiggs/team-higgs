@@ -7,6 +7,7 @@ from typing import Any
 from psycopg import sql
 
 from emctl.db import Conn
+from emctl.errors import NotFoundError
 from emctl.repo import _sql
 
 Row = _sql.Row
@@ -69,3 +70,39 @@ def list_(
     if blocked is not None:
         where["blocked"] = blocked
     return _sql.select(conn, "tasks", where=where or None)
+
+
+def list_for_groom(conn: Conn, *, status: str | None) -> list[Row]:
+    """Tasks in grooming order: explicit ``groom_rank`` first (ascending),
+    then unranked tasks by id. Optionally filtered to one status.
+
+    A distinct read from :func:`list_` (which orders by id) so the CLI's
+    ``task list`` output stays byte-for-byte identical.
+    """
+    query: sql.Composable = sql.SQL("SELECT * FROM tasks")
+    params: list[Any] = []
+    if status is not None:
+        query = query + sql.SQL(" WHERE status = %s")
+        params.append(status)
+    # NULLS LAST keeps never-reordered tasks after explicitly ranked ones.
+    query = query + sql.SQL(" ORDER BY groom_rank ASC NULLS LAST, id ASC")
+    return list(conn.execute(query, params).fetchall())
+
+
+def reorder(conn: Conn, ordered_ids: list[int]) -> list[Row]:
+    """Assign ``groom_rank`` from the given order (0-based) and return the
+    updated rows. Each id is set to its index in ``ordered_ids``; an unknown
+    id raises :class:`NotFoundError` (no row updated) before any partial write
+    is committed, because all updates run in the caller's one transaction.
+    """
+    updated: list[Row] = []
+    for rank, task_id in enumerate(ordered_ids):
+        query = sql.SQL(
+            "UPDATE tasks SET groom_rank = %s, updated_at = now() "
+            "WHERE id = %s RETURNING *"
+        )
+        row = conn.execute(query, (rank, task_id)).fetchone()
+        if row is None:
+            raise NotFoundError(f"task {task_id} not found")
+        updated.append(row)
+    return updated

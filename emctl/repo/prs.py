@@ -38,6 +38,26 @@ def get(conn: Conn, pr_id: int) -> Row:
     return _sql.get(conn, "prs", "pr", pr_id)
 
 
+def list_(
+    conn: Conn, *, project_id: int | None = None, status: str | None = None
+) -> list[Row]:
+    where: dict[str, Any] = {}
+    if project_id is not None:
+        where["project_id"] = project_id
+    if status is not None:
+        where["status"] = status
+    return _sql.select(conn, "prs", where=where or None)
+
+
+def list_awaiting_decision(conn: Conn) -> list[Row]:
+    """Open PRs Tyler has not yet decided -- the PR-backed approval items."""
+    query = sql.SQL(
+        "SELECT * FROM prs WHERE status = 'open' AND tyler_decision IS NULL "
+        "ORDER BY id ASC"
+    )
+    return list(conn.execute(query).fetchall())
+
+
 def update(
     conn: Conn,
     pr_id: int,

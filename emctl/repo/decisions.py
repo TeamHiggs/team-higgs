@@ -54,6 +54,17 @@ def supersede(conn: Conn, old_id: int, *, new_id: int) -> Row:
     )
 
 
+def decide(conn: Conn, decision_id: int, *, status: str) -> Row:
+    """Set a proposed decision's ``status`` (accepted / reversed).
+
+    Used by the command-center approval surface. The CHECK constraint on
+    ``decisions.status`` rejects an out-of-vocabulary value at the DB.
+    """
+    return _sql.update(
+        conn, "decisions", "decision", decision_id, {"status": status}
+    )
+
+
 def list_(
     conn: Conn,
     *,

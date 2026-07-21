@@ -25,6 +25,7 @@ EXPECTED_TABLES = {
     "retros",
     "risks",
     "task_events",
+    "notes",
 }
 EXPECTED_INDEXES = {
     "idx_tasks_status",
@@ -34,6 +35,7 @@ EXPECTED_INDEXES = {
     "idx_learnings_open",
     "idx_risks_open",
     "idx_task_events_task",
+    "idx_notes_created_at",
 }
 
 
@@ -170,6 +172,42 @@ def test_0004_single_step_round_trips() -> None:
     with _conn() as conn:
         cols = _columns(conn, "runs")
     assert cols >= _RUN_TOKEN_COLUMNS
+
+
+def test_0005_groom_rank_single_step_round_trips() -> None:
+    """0005's own downgrade/upgrade: tasks.groom_rank disappears at 0004 and
+    returns at head. Restores head so later tests see the full schema."""
+    cfg = make_config()
+    command.downgrade(cfg, "0004")
+    with _conn() as conn:
+        assert "groom_rank" not in _columns(conn, "tasks")
+    command.upgrade(cfg, "head")
+    with _conn() as conn:
+        assert "groom_rank" in _columns(conn, "tasks")
+
+
+def test_0006_notes_single_step_round_trips() -> None:
+    """0006's own downgrade/upgrade: the notes table disappears at 0005 and
+    returns at head. Restores head so later tests see the full schema."""
+    cfg = make_config()
+    command.downgrade(cfg, "0005")
+    with _conn() as conn:
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            ).fetchall()
+        }
+    assert "notes" not in tables
+    command.upgrade(cfg, "head")
+    with _conn() as conn:
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            ).fetchall()
+        }
+    assert "notes" in tables
 
 
 def test_0003_backfill_seeds_synthetic_task_event() -> None:

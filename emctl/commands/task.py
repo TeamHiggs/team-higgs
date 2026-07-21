@@ -4,7 +4,7 @@ from typing import Any
 
 import typer
 
-from emctl import output
+from emctl import output, services
 from emctl.db import transaction
 from emctl.enums import ModelTier, TaskStatus
 from emctl.errors import ValidationError
@@ -27,7 +27,11 @@ def create(
     by: str | None = typer.Option(None, "--by", help="Acting role."),
 ) -> None:
     with transaction() as conn:
-        row = tasks.create(
+        # Shared with the command-center API (emctl.services): create the task
+        # and record the opening status as the first history event (from_status
+        # NULL on creation; row["status"] reflects the DB default when --status
+        # was omitted).
+        row = services.create_task(
             conn,
             project_id=project,
             title=title,
@@ -38,15 +42,6 @@ def create(
             status=status.value if status else None,
             branch=branch,
             depends_on=list(depends_on) if depends_on else None,
-        )
-        # Record the opening status as the first history event (from_status
-        # NULL on creation). row["status"] reflects the DB default when --status
-        # was omitted.
-        task_events.add(
-            conn,
-            task_id=int(row["id"]),
-            from_status=None,
-            to_status=str(row["status"]),
             actor=by,
         )
     output.emit_record(row)
@@ -87,19 +82,17 @@ def update(
         values["blocked"] = False
         values["blocked_reason"] = None
     with transaction() as conn:
-        # Read the prior status first so a genuine status change writes a
-        # task_events row with the correct from/to (PRD §4). Also surfaces a
-        # clean not-found before any write.
-        current = tasks.get(conn, task_id)
-        row = tasks.update(conn, task_id, values)
-        if status is not None and status.value != current["status"]:
-            task_events.add(
-                conn,
-                task_id=task_id,
-                from_status=str(current["status"]),
-                to_status=status.value,
-                actor=by,
-            )
+        # Shared with the command-center API (emctl.services): read the prior
+        # status first so a genuine status change writes a task_events row with
+        # the correct from/to (PRD §4), and surface a clean not-found before any
+        # write.
+        row = services.update_task(
+            conn,
+            task_id,
+            values,
+            new_status=status.value if status is not None else None,
+            actor=by,
+        )
     output.emit_record(row)
 
 

@@ -1,4 +1,4 @@
--- Agent platform state store, schema v2.1 (through migration 0004).
+-- Agent platform state store, schema v2.2 (through migration 0006).
 --
 -- REFERENCE ONLY. As of emctl task 1, the operative schema truth is the
 -- Alembic migration set under emctl/migrations/ (0001 reproduces the v1
@@ -8,6 +8,9 @@
 -- to any database (the docker-compose init mount was removed to avoid
 -- colliding with Alembic). Change the schema by adding a migration, then
 -- update this reference to match.
+--
+-- v2.2 (command-center, migrations 0005/0006): `tasks.groom_rank` (backlog
+-- ordering) and the append-only `notes` table, both additive and reversible.
 --
 -- Postgres. CHECK constraints instead of enums for cheap evolution;
 -- promote to types if churn settles.
@@ -39,7 +42,8 @@ CREATE TABLE tasks (
     branch         TEXT,
     depends_on     INT[] NOT NULL DEFAULT '{}',
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    groom_rank     INT            -- schema v2.2 (0005): backlog ordering; NULL = unranked
 );
 
 CREATE TABLE runs (
@@ -215,7 +219,17 @@ CREATE TABLE task_events (
     at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- schema v2.2 (migration 0006): Tyler's append-only notes (text only, decision #20).
+CREATE TABLE notes (
+    id          SERIAL PRIMARY KEY,
+    body        TEXT NOT NULL,
+    author      TEXT,            -- who wrote it (authenticated email; NULL for CLI)
+    context     TEXT,            -- optional free-text context (surface / project ref)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX idx_tasks_status   ON tasks(status) WHERE status != 'done';
+CREATE INDEX idx_notes_created_at ON notes(created_at);
 CREATE INDEX idx_runs_task      ON runs(task_id);
 CREATE INDEX idx_reviews_pr     ON reviews(pr_id);
 CREATE INDEX idx_debt_open      ON debt(status) WHERE status = 'open';
