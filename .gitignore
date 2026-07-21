@@ -7,3 +7,10 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# frontend (command_center/frontend) — build artifacts, deps, TS caches.
+# The production bundle is emitted into command_center/static by `pnpm build`
+# and rebuilt fresh in the Docker image; it is not committed.
+node_modules/
+command_center/static/
+*.tsbuildinfo

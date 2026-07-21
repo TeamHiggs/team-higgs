@@ -8,3 +8,7 @@ tests
 infra
 docs
 scratchpad
+# Frontend deps + a stale local bundle: node_modules is huge and the SPA is
+# rebuilt in the `frontend` build stage, so keep both out of the build context.
+**/node_modules
+command_center/static
