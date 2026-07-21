@@ -89,3 +89,42 @@ variable "higgs_command_image" {
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
+
+# --- command center (the REAL gated service; command_center.tf) ---------------
+
+variable "command_center_image" {
+  description = <<-EOT
+    Fully-qualified container image for the command-center Cloud Run service.
+    Defaults to the public hello image so the first apply can stand the service
+    up before a real image exists in Artifact Registry (day-zero chicken-and-egg,
+    same as plant-log). The real image is shipped afterward by `gcloud run deploy`
+    or a CI deploy workflow (follow-up); `ignore_changes` on the image keeps
+    Terraform from reverting a shipped revision.
+  EOT
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "cc_allowed_emails" {
+  description = "Allow-list for the command center — Tyler only (decision #17). Not a secret (an email address); passed as a plain env var."
+  type        = string
+  default     = "tyler@tylerdorland.com"
+}
+
+variable "cc_google_client_id" {
+  description = <<-EOT
+    Google OAuth 2.0 Web client ID for the command-center sign-in. NOT a secret
+    (the matching client *secret* lives in Secret Manager). REQUIRED with no
+    default: a non-empty value both wires real OIDC and arms the backend's
+    fail-closed DEV_AUTH guard (command_center/config.py), so a blank must never
+    ship. This is a NEW OAuth client, separate from plant-log's — Tyler creates
+    it and supplies the ID in terraform.tfvars.
+  EOT
+  type        = string
+}
+
+variable "cc_google_redirect_uri" {
+  description = "OAuth redirect URI for the command center. Defaults to the higgs.tylerdorland.com callback; must be added as an Authorized redirect URI on the OAuth client."
+  type        = string
+  default     = "https://higgs.tylerdorland.com/api/auth/callback"
+}
