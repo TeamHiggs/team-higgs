@@ -1,29 +1,35 @@
 # -----------------------------------------------------------------------------
-# team-higgs command center — day-zero address bridge.
+# team-higgs command center — day-zero address bridge (THROWAWAY placeholder).
 #
-# WHY: we want the command-center *address* (higgs.tylerdorland.com) live and
-# TLS-provisioned before the real app exists, so front-end/OAuth/DNS wiring can
-# proceed against a stable origin. This is the same bridge pattern plant-log
-# used: stand up a minimal placeholder Cloud Run service now, map the subdomain,
-# and let the real command-center image deploy into this same service later.
+# WHY: reserve the command-center address (higgs.tylerdorland.com) and warm its
+# Google-managed TLS cert NOW, before the real app exists, so front-end/OAuth/DNS
+# wiring can proceed against a stable, HTTPS origin.
 #
-# The real command center is a separate future PROJECT with its own auth,
-# database, and identity. This file is intentionally minimal — a public hello
-# page and a hostname, nothing more. No Cloud SQL, no secrets, no runtime env.
+# WHAT THIS IS: a minimal, disposable placeholder Cloud Run service whose ONLY
+# jobs are to hold the higgs subdomain mapping and warm the cert. It serves a
+# public hello page and nothing else — no Cloud SQL, no secrets, no runtime env.
+#
+# WHAT THIS IS NOT: this is NOT the command center. The REAL command center will
+# be built as its OWN gated service — its own project, identity, and auth. It
+# will NOT reuse this service and must NOT inherit the allUsers -> run.invoker
+# binding below. At command-center cutover, THIS placeholder service and its
+# public binding are RETIRED/REPLACED with authenticated (or IAP) ingress.
+# Tracked as platform risk #3 ("Command-center service must not inherit
+# placeholder's allUsers public invoke").
 # -----------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_service" "higgs_command" {
   name     = "higgs-command"
   location = var.region
 
-  # Stateless placeholder; nothing here is worth destroy-protecting. Mirrors
-  # plant-log — auth (when the real app lands) is enforced in-app, not by
-  # Cloud Run ingress.
+  # Stateless, disposable placeholder; nothing here is worth destroy-protecting,
+  # and it is meant to be retired at command-center cutover (see header).
   deletion_protection = false
 
   template {
     # No service_account: the placeholder needs no GCP identity (no Secret
-    # Manager, no Cloud SQL). The real app will attach its own least-privilege SA.
+    # Manager, no Cloud SQL). The real command center is a SEPARATE service and
+    # will attach its own least-privilege SA — not this one.
 
     scaling {
       min_instance_count = 0
@@ -37,18 +43,22 @@ resource "google_cloud_run_v2_service" "higgs_command" {
     }
   }
 
-  # CI/`gcloud run deploy` owns the running image after the real app ships;
-  # Terraform must not revert a shipped revision back to the placeholder.
+  # ignore_changes lets the placeholder's holding image be swapped out-of-band
+  # (e.g. `gcloud run deploy` of a different hello/holding page) without
+  # Terraform reverting it. It does NOT mean the real command center deploys
+  # here — that is a separate, gated service (see header; platform risk #3).
   lifecycle {
     ignore_changes = [template[0].containers[0].image]
   }
 }
 
-# Public invoke: allUsers may INVOKE (reach the service). This matches
-# plant-log's public-invoke + in-app-auth model. The placeholder is
-# INTENTIONALLY public and serves only the hello page. When the REAL command
-# center ships (its own future project), it MUST gate access via in-app auth —
-# this public binding does not substitute for application-level authorization.
+# Public invoke: allUsers may INVOKE (reach the service). Safe ONLY because the
+# placeholder serves a static hello page with no data and no identity. This
+# binding is STICKY and must not outlive the placeholder: the REAL command center
+# is a SEPARATE, gated service that must NOT inherit it. At cutover, retire this
+# binding together with the placeholder and front the real service with
+# authenticated (or IAP) ingress. Tracked as platform risk #3 ("Command-center
+# service must not inherit placeholder's allUsers public invoke").
 resource "google_cloud_run_v2_service_iam_member" "higgs_command_public_invoke" {
   name     = google_cloud_run_v2_service.higgs_command.name
   location = google_cloud_run_v2_service.higgs_command.location
