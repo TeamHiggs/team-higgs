@@ -136,6 +136,17 @@ PR is authored.
 4. **DNS cutover:** point `higgs.tylerdorland.com` A record at the LB IP; wait
    for the managed cert to go ACTIVE; verify `https://higgs.tylerdorland.com`
    serves the command center behind IAP + in-app OIDC.
+
+   > **Managed-cert timing (observed live 2026-07-22).** A Google-managed cert
+   > only provisions once *public* DNS for the domain resolves to the LB IP, so
+   > right after you flip the record the cert sits in `PROVISIONING` with domain
+   > status `FAILED_NOT_VISIBLE` — this is transient and expected, not a failure.
+   > The lag is bounded by the **prior** record's TTL: the old `higgs` CNAME was
+   > `14400s` (4h), so resolvers can serve the stale answer for up to that long
+   > before the A record propagates and the cert auto-provisions to `ACTIVE`.
+   > Do not delete/recreate the cert to "fix" it; just wait out the old TTL.
+   > (Lower the TTL on the *existing* record ahead of the cutover to shrink this
+   > window.) HTTPS only goes live once the cert reaches `ACTIVE`.
 5. **Retire the placeholder (closes risk #3):** remove `infra/higgs_command.tf`
    (service + `higgs_command_public_invoke` allUsers binding + domain mapping) in
    a small PR; CI apply deletes them. Verify the plan shows the placeholder

@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from command_center.config import Settings, get_settings
 from command_center.errors import register_error_handlers
@@ -24,6 +26,48 @@ from command_center.routers import (
 # local dev / CI / this backend-only task; the app then serves the JSON API
 # only. One image, one deploy (PRD §3) once the SPA lands.
 _DEFAULT_STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# Content-Security-Policy for the one-image SPA (task #34, defence-in-depth).
+# Directives, chosen against the actual Vite production build (not guessed):
+#   * default-src 'self' — scripts, XHR/fetch (/api is same-origin), images,
+#     fonts, and the stylesheet all load from this origin only. The built
+#     index.html emits exactly one external same-origin module <script> and one
+#     same-origin <link> stylesheet; there are NO inline <script> tags, no
+#     data:/blob: URIs, and no external hosts, so 'self' covers scripts fully.
+#   * style-src 'self' 'unsafe-inline' — the React SPA sets inline style
+#     attributes (style={{...}}, e.g. dynamic column widths / token bars), which
+#     CSP governs under style-src; 'unsafe-inline' is required for them to apply.
+#     This relaxation is scoped to STYLES only — scripts stay locked to 'self',
+#     so the meaningful XSS protection (no inline/eval/foreign script) is intact.
+# This is the strictest policy that does not break the SPA. Widen only with a
+# matching build change (e.g. add connect-src if a websocket/3rd-party API lands).
+_CONTENT_SECURITY_POLICY = "default-src 'self'; style-src 'self' 'unsafe-inline'"
+
+
+class SecurityHeadersMiddleware:
+    """Attach static security headers to every response.
+
+    Pure ASGI (deliberately NOT ``BaseHTTPMiddleware``): it injects the header on
+    the ``http.response.start`` message without buffering the body, so the SPA's
+    StaticFiles responses keep their Range / conditional-GET (304) behaviour.
+    """
+
+    def __init__(self, app: ASGIApp, *, csp: str) -> None:
+        self._app = app
+        self._csp = csp
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["Content-Security-Policy"] = self._csp
+            await send(message)
+
+        await self._app(scope, receive, send_with_headers)
 
 
 def create_app(
@@ -59,6 +103,9 @@ def create_app(
         same_site="lax",
         https_only=settings.session_https_only,
     )
+
+    # Emit the CSP on every response (SPA one-image, API, and /healthz alike).
+    app.add_middleware(SecurityHeadersMiddleware, csp=_CONTENT_SECURITY_POLICY)
 
     register_error_handlers(app)
 
