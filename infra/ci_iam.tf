@@ -1,28 +1,23 @@
 # =============================================================================
-# CI apply/plan identities — the roles that let GitHub Actions run Terraform.
+# CI apply identity — the roles that let GitHub Actions run Terraform apply.
 #
 # SECURITY-CRITICAL FILE. Every binding here is a privilege grant to a CI
-# identity. Read infra/terraform-ci.md "SA grant delta" and the PR security
-# section before changing anything. Two identities, deliberately split:
+# identity. Read infra/terraform-ci.md "Security surface" and the PR security
+# section before changing anything.
 #
-#   * github-ci  (existing SA) — the APPLY identity. Impersonable ONLY from
+#   * github-ci (existing SA) — the APPLY identity. Impersonable ONLY from
 #     refs/heads/main (authoritative binding in wif.tf, task #14 hardening).
 #     This file ADDS the resource-management roles Terraform apply needs.
 #     WRITE access; main-ref only; never assumable from a PR.
 #
-#   * terraform-plan (new SA) — the PLAN identity. Impersonable from any ref
-#     of TeamHiggs/team-higgs (so pull_request workflows can run `terraform
-#     plan`). READ-ONLY: it cannot create, modify, or destroy anything. It
-#     CAN read remote state and the three plant-log secret values (an
-#     unavoidable consequence of refreshing google_secret_manager_secret_version
-#     at plan time — see below and the PR "Surface" section).
-#
-# WHY TWO SAs: plan-on-PR needs an identity assumable from PR refs; apply needs
-# an identity with broad write. Granting the ONE identity both (PR-ref trust AND
-# write/admin) would expose a project-admin identity to pre-merge PR workflow
-# code — exactly what the main-ref hardening on github-ci prevents. Splitting
-# keeps the powerful identity (github-ci) main-ref-only and gives PRs a
-# least-privilege read-only identity instead. See PR Deviations.
+# NO plan-on-PR identity. plan-on-PR would need an identity assumable from PR
+# refs that can READ remote state (the state object holds the plant-log DB
+# password + session secret in plaintext) and read the plant-log secrets to
+# refresh secret_version resources at plan time — i.e. a PR-ref-impersonable
+# identity with production-secret read. Same-repo agent PRs are this platform's
+# threat model, so that identity is not created here (security review 38 / task
+# #23 path A). Plan-on-PR is DEFERRED to hardening task #35 (move TF-generated
+# secrets out of state first, so a plan identity no longer needs state-read).
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -144,79 +139,4 @@ resource "google_storage_bucket_iam_member" "github_ci_tfstate" {
   bucket = "team-higgs-platform-tfstate"
   role   = "roles/storage.objectAdmin"
   member = local.github_ci_member
-}
-
-# -----------------------------------------------------------------------------
-# terraform-plan — PLAN identity (new SA): READ-ONLY, PR-ref-trusted.
-#
-# Runs `terraform plan` on pull_request workflows. It can read every resource's
-# live state (to compute the diff) and read remote state, but holds NO write or
-# admin role — a compromised/malicious PR workflow assuming it cannot modify
-# infrastructure.
-#
-# UNAVOIDABLE EXPOSURE (flagged for security review): refreshing the three
-# google_secret_manager_secret_version resources at plan time requires
-# secretmanager.versions.access on those secrets, so this identity CAN read the
-# plant-log database URL, session secret, and OAuth client-secret values. Any
-# identity that can run a real `terraform plan` over this module has that
-# capability; splitting it into a read-only, per-secret-scoped SA is the tightest
-# posture available. If security judges even read-only secret exposure to PR-ref
-# workflows unacceptable, the fallback is to drop plan-on-PR and keep only
-# apply-on-merge (see PR "Follow-ups" / runbook).
-# -----------------------------------------------------------------------------
-
-resource "google_service_account" "terraform_plan" {
-  account_id   = "terraform-plan"
-  display_name = "Terraform plan-on-PR (read-only)"
-}
-
-# WIF trust: any ref of TeamHiggs/team-higgs may impersonate terraform-plan.
-# Keyed on attribute.repository (not attribute.ref) so pull_request refs
-# (refs/pull/N/merge) are covered, but scoped to the ONE repo infra PRs come
-# from — plant-log workflows cannot assume it. The provider's own
-# attribute_condition still gates which repos may mint a token at all.
-# _member (additive), not _binding: this is a fresh SA with no other trust.
-resource "google_service_account_iam_member" "terraform_plan_wif" {
-  service_account_id = google_service_account.terraform_plan.name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/TeamHiggs/team-higgs"
-}
-
-# Broad project READ so plan can refresh every managed resource type (Cloud Run,
-# Cloud SQL, Artifact Registry, service accounts, WIF, project IAM). roles/viewer
-# grants no write and no secret-VALUE access. (Tightening to per-service viewer
-# roles is a possible follow-up.)
-resource "google_project_iam_member" "terraform_plan_viewer" {
-  project = var.project_id
-  role    = "roles/viewer"
-  member  = "serviceAccount:${google_service_account.terraform_plan.email}"
-}
-
-# Read the remote state object. objectViewer (read-only): plan runs with
-# -lock=false so it never needs to write the lock object.
-resource "google_storage_bucket_iam_member" "terraform_plan_tfstate" {
-  bucket = "team-higgs-platform-tfstate"
-  role   = "roles/storage.objectViewer"
-  member = "serviceAccount:${google_service_account.terraform_plan.email}"
-}
-
-# secretmanager.versions.access on EXACTLY the three plant-log secrets (per
-# secret, never project-wide) — required to refresh the secret_version resources
-# at plan time. This is the exposure noted in the block header above.
-resource "google_secret_manager_secret_iam_member" "terraform_plan_database_url" {
-  secret_id = google_secret_manager_secret.database_url.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.terraform_plan.email}"
-}
-
-resource "google_secret_manager_secret_iam_member" "terraform_plan_session_secret" {
-  secret_id = google_secret_manager_secret.session_secret.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.terraform_plan.email}"
-}
-
-resource "google_secret_manager_secret_iam_member" "terraform_plan_google_client_secret" {
-  secret_id = google_secret_manager_secret.google_client_secret.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.terraform_plan.email}"
 }

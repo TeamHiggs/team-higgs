@@ -1,17 +1,15 @@
 # =============================================================================
 # CI Terraform variables — COMMITTED, NON-SECRET, AUTHORITATIVE.
 #
-# Auto-loaded by Terraform (every `*.auto.tfvars` is), so both the plan-on-PR
-# and apply-on-merge jobs get identical inputs with zero workflow wiring and no
-# per-job duplication. This file is the single source of truth for the module's
-# deployment-specific values; it is reviewed in PRs like any other code and
-# changes go through the same merge gate.
+# Auto-loaded by Terraform (every `*.auto.tfvars` is), so the apply-on-merge job
+# gets its inputs with zero workflow wiring. This file is the single source of
+# truth for the module's deployment-specific values; it is reviewed in PRs like
+# any other code and changes go through the same merge gate.
 #
 # WHY committed .auto.tfvars over workflow `env`/TF_VAR_*:
 #   * Reviewable + versioned: a value change shows up in the PR diff and the
 #     plan, under the same governance as the HCL.
-#   * DRY across jobs: plan and apply read the same file; no risk of the two
-#     jobs drifting apart, which env-per-job invites.
+#   * Applied exactly as reviewed: the merge run reads this same committed file.
 #   * Keeps the workflow YAML minimal and free of environment-specific values.
 #
 # NON-SECRET ONLY. Every value here is safe to commit: a GCP project ID, a
