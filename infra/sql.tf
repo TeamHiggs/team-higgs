@@ -85,3 +85,37 @@ resource "random_password" "plantlog_db" {
   special          = true
   override_special = "-_"
 }
+
+# -----------------------------------------------------------------------------
+# Platform state store database (task #39, Phase 3).
+#
+# docs/stack-devops.md, "State is the integration seam … local now, Cloud SQL at
+# Phase 3": the emctl Postgres (the team's tasks/decisions/risks/runs/notes/…)
+# moves off the local `platform-db` Docker container onto this shared instance as
+# its own database. Both sides of the integration seam then talk to the SAME
+# rows: the local agent via emctl, and the deployed command-center service via
+# its Cloud SQL socket (command_center.tf). Neither talks to the other — only to
+# this database — which is why they deploy independently.
+#
+# prevent_destroy — a DELIBERATE difference from google_sql_database.plantlog
+# above (which has none). The plantlog DB is a product database; THIS database is
+# the platform's memory. A plan that destroys it is irrecoverable loss of all
+# team state, so Terraform must refuse to plan it (stack-devops.md: prevent_destroy
+# on stateful resources). Emptying/recreating this database is an operator action,
+# never an automated apply. See the PR.
+#
+# NO USER RESOURCE HERE — this is intentional. The least-privilege `command_center`
+# login role is created OUT-OF-BAND (migration runbook), not by Terraform, so its
+# password never lands in the versioned GCS state bucket. Rationale + tradeoff:
+# infra/cc-phase3-state-migration.md and the PR "password/secret handling". The
+# per-table GRANTs for that role are likewise SQL run in the runbook, consistent
+# with sql.tf's note that per-table least privilege is enforced by SQL GRANTs,
+# not at the infra layer.
+resource "google_sql_database" "platform_state" {
+  name     = "platform"
+  instance = google_sql_database_instance.platform.name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

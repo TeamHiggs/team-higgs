@@ -8,6 +8,11 @@ output "sql_connection_name" {
   value       = google_sql_database_instance.platform.connection_name
 }
 
+output "platform_state_db" {
+  description = "Name of the platform state store database (the emctl Postgres) on the shared instance (task #39, Phase 3). Use with sql_connection_name to build DATABASE_URL — see infra/cc-phase3-state-migration.md."
+  value       = google_sql_database.platform_state.name
+}
+
 output "artifact_registry_repo" {
   description = "Artifact Registry Docker repo path for plant-log images."
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.plant_log.repository_id}"
