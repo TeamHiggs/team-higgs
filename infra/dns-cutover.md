@@ -29,7 +29,13 @@ cache). `infra/dns.tf` mirrors exactly this, TTLs included.
 
 No MX (domain sends no mail). No CAA.
 
-### tylerdorland.com — currently on Cloud DNS NS (`ns-cloud-c{1..4}.googledomains.com`)
+### tylerdorland.com — currently on legacy Cloud DNS NS (`ns-cloud-c{1..4}.googledomains.com`)
+
+These nameservers belong to a **Google-Domains-era zone in a Google-owned
+project**, not to any zone in `team-higgs-platform` (verified live 2026-07-21:
+that project has **zero** managed zones). They are therefore **not importable**
+here — the new Terraform zone gets a **different** `ns-cloud-XX` set, so this
+domain still needs a registrar NS repoint at cutover.
 
 | Name | Type | TTL | Value(s) |
 |---|---|---|---|
@@ -44,50 +50,51 @@ sensible follow-up but is **not** in scope here — replication only).
 
 **Discovery gap:** authoritative AXFR (zone transfer) was refused on both
 domains, so this table is the set of records reachable by name query, not a
-guaranteed-complete zone dump. Before switching NS, confirm the Squarespace DNS
-panel (airportbar.app) and the existing Cloud DNS zone (tylerdorland.com) show
-**no records beyond this table**. If they do, add them to `infra/dns.tf` first.
+guaranteed-complete zone dump. Before switching NS, reconcile against the source
+of truth for each domain and confirm **no records exist beyond this table**:
+- **airportbar.app** — the Squarespace DNS panel (its records are hand-typed
+  there today).
+- **tylerdorland.com** — the legacy Google-owned Cloud DNS zone is not readable
+  from `team-higgs-platform`, so reconcile against its **live authoritative
+  answers** (query `ns-cloud-c1.googledomains.com` directly for every record
+  type you can enumerate: A, AAAA, TXT, MX, NS, CAA, and the known `www`/`higgs`
+  subdomains).
+
+If either source shows a record not in the table above, add it to `infra/dns.tf`
+**before** cutover.
 
 ---
 
-## 1. Pre-apply discovery (do this FIRST — tylerdorland.com is the trap)
+## 1. Both zones are CREATES — there is nothing to import
 
-`tylerdorland.com` is **already delegated to Cloud DNS** nameservers, which means
-a managed zone for it **probably already exists** (a Google-Domains-era zone).
-`airportbar.app`, by contrast, is on Squarespace NS and has **no** Cloud DNS zone
-yet.
-
-Run, authenticated as `tyler@tylerdorland.com`:
+Verified live on 2026-07-21 (authenticated as `tyler@tylerdorland.com`):
 
 ```sh
 gcloud dns managed-zones list --project=team-higgs-platform
+# -> zero zones
 ```
 
-- **If a zone with `dnsName = tylerdorland.com.` already exists:** do **not** let
-  Terraform create a duplicate. Import it into state so Terraform adopts it:
+`team-higgs-platform` holds **no** managed zones. `infra/dns.tf` therefore
+**creates** both zones from scratch; there is **no import path** for either
+domain.
 
-  ```sh
-  cd infra
-  terraform init -backend-config=backend.hcl
-  terraform import google_dns_managed_zone.tylerdorland_com <EXISTING_ZONE_NAME>
-  # then import each pre-existing record set it already serves, e.g.:
-  terraform import google_dns_record_set.tylerdorland_apex_a \
-    "<EXISTING_ZONE_NAME>/tylerdorland.com./A"
-  # (repeat for TXT, MX, www CNAME, higgs CNAME)
-  ```
+- **airportbar.app** is on Squarespace nameservers today and has no Cloud DNS
+  zone. Terraform creates it fresh. Needs the step-5 registrar NS switch.
+- **tylerdorland.com** currently answers from `ns-cloud-c{1..4}.googledomains.com`,
+  but those belong to a **Google-Domains-era zone in a Google-owned project** —
+  not importable into `team-higgs-platform`. Terraform creates a fresh zone here
+  with a **different** `ns-cloud-XX` nameserver set. Because that set differs from
+  what the registrar points at today, **tylerdorland.com also needs the step-5
+  registrar NS switch — it is NOT zero-touch.**
 
-  After import, the plan for tylerdorland.com should be **no-op or in-place
-  only** — never a destroy/recreate. If the imported zone's nameservers already
-  match what the registrar points at, **tylerdorland.com needs NO registrar NS
-  change at all** — it is already delegated here; you are only bringing its
-  records under Terraform.
+**Both domains require a registrar NS repoint at cutover (step 5).** Neither is a
+records-only adoption.
 
-- **If no such zone exists:** Terraform creates a fresh zone with a **new**
-  `ns-cloud-XX` nameserver set, and tylerdorland.com **does** need the registrar
-  NS switch in step 5.
-
-`airportbar.app` always needs the step-5 NS switch (it is moving off
-Squarespace's nameservers).
+The apply also enables the Cloud DNS API declaratively
+(`google_project_service.dns`, `dns.googleapis.com`), so a clean apply on a fresh
+project is self-contained. The API was enabled by hand on 2026-07-21 as a
+prerequisite; on an already-enabled project the plan simply records ownership and
+makes no functional change.
 
 ---
 
@@ -102,9 +109,9 @@ Terraform-in-CI task #23). If that CI apply path is not yet live, this is a
 supervised local `terraform apply` by Tyler under his own gcloud ADC (same
 bootstrap caveat as the WIF import in `infra/README.md`). Agents do not apply.
 
-Confirm the applied plan **creates** the zones + record sets and shows **no
-destroys** and **no changes to any non-DNS resource** (no `plantlog-*`, no Cloud
-Run, no SQL).
+Confirm the applied plan **creates** the two zones + their record sets, **enables
+the Cloud DNS API** (`google_project_service.dns`), and shows **no destroys** and
+**no changes to any non-DNS resource** (no `plantlog-*`, no Cloud Run, no SQL).
 
 ---
 
@@ -114,9 +121,10 @@ Run, no SQL).
 cd infra && terraform output dns_zone_nameservers
 ```
 
-Record both 4-nameserver sets. `airportbar.app`'s set is what you enter at the
-registrar in step 5. `tylerdorland.com`'s set is only needed if step 1 said a new
-zone was created.
+Record both 4-nameserver sets — **both are needed at the registrar in step 5**,
+because both zones are fresh creates (step 1). `airportbar.app`'s set replaces its
+Squarespace nameservers; `tylerdorland.com`'s set replaces the legacy
+`ns-cloud-c{1..4}.googledomains.com` set.
 
 ---
 
@@ -162,9 +170,12 @@ per-record DNS editor.
    `airportbar.app` nameservers from step 3.
 3. Save.
 
-**tylerdorland.com:** only if step 1 created a NEW zone. Replace the current
-`ns-cloud-c{1..4}.googledomains.com` entries with the new set from step 3. If step
-1 imported an existing zone whose NS already match, **skip — no change needed**.
+**tylerdorland.com:** required (step 1 confirmed this is a fresh zone with a new
+nameserver set — not a records-only adoption). In the Squarespace registrar panel,
+replace the current `ns-cloud-c{1..4}.googledomains.com` entries with the new
+`tylerdorland.com` nameserver set from step 3. This is the higher-consequence
+switch — Google Workspace **mail** rides on this domain — so verify airportbar.app
+fully recovered first, then do this one and watch the MX check in step 6 closely.
 
 Registrar NS changes propagate on the parent TLD's delegation TTL (typically
 minutes to a few hours; `.app` and `.com` are fast). Delegation is cached at the

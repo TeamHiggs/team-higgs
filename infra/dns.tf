@@ -36,6 +36,18 @@
 # domain.tf and higgs_command.tf and are untouched by this change.
 # -----------------------------------------------------------------------------
 
+# API enablement: the Cloud DNS API (dns.googleapis.com) must be enabled on the
+# project before any zone or record set can be created. It was turned on by hand
+# as a prerequisite for the create-only plan; declaring it here makes Terraform
+# the owner of record so a clean `apply` on a fresh project is self-contained.
+#   disable_on_destroy = false — destroying this config must NEVER disable the
+#   DNS API underneath a live zone or a later re-apply; API-disable is a
+#   deliberate, out-of-band action, not a side effect of `terraform destroy`.
+resource "google_project_service" "dns" {
+  service            = "dns.googleapis.com"
+  disable_on_destroy = false
+}
+
 # =============================================================================
 # Zone: airportbar.app  (plant-log — apex + www on Cloud Run, DMARC/SPF for mail)
 # Currently delegated to Squarespace nameservers (nse{1..4}.squarespacedns.com);
@@ -49,6 +61,9 @@ resource "google_dns_managed_zone" "airportbar_app" {
   # Public authoritative zone. DNSSEC is intentionally left OFF: the live zone
   # is not signed today, and enabling it would change the delegation contract and
   # add a DS-record step to the cutover. Signing is a separate, deliberate task.
+
+  # Gate zone creation on the DNS API being enabled (self-contained apply).
+  depends_on = [google_project_service.dns]
 }
 
 # Apex A -> Cloud Run's anycast frontend (the ghs A set the domain mapping emits).
@@ -115,14 +130,14 @@ resource "google_dns_record_set" "airportbar_dmarc_txt" {
 # Zone: tylerdorland.com  (Squarespace consulting site + Google Workspace mail
 # + higgs command-center bridge)
 #
-# IMPORTANT DISCOVERY: unlike airportbar.app, tylerdorland.com is ALREADY
-# delegated to Cloud DNS nameservers (ns-cloud-c{1..4}.googledomains.com), not to
-# Squarespace's. That means a Cloud DNS zone for this domain very likely ALREADY
-# EXISTS (a legacy Google-Domains-era zone). This resource declares the zone we
-# want to own going forward; whoever runs the apply MUST first check for a
-# pre-existing zone and IMPORT it rather than let Terraform create a duplicate —
-# see infra/dns-cutover.md ("Pre-apply discovery"). I could not verify this from
-# the agent sandbox (no live GCP access); flagged as an open item.
+# DELEGATION FACT (verified live 2026-07-21): tylerdorland.com currently answers
+# from ns-cloud-c{1..4}.googledomains.com, but those nameservers belong to a
+# Google-Domains-era zone in a GOOGLE-OWNED project — NOT to any zone in
+# team-higgs-platform. `gcloud dns managed-zones list --project=team-higgs-platform`
+# returns ZERO zones, so there is nothing to import: this resource CREATES a fresh
+# zone with a NEW ns-cloud-XX nameserver set. Because the new set differs from the
+# legacy one the registrar points at today, tylerdorland.com WILL require a
+# registrar NS repoint at cutover — it is NOT zero-touch. See infra/dns-cutover.md.
 #
 # This apex is Tyler's future consulting site and serves live TODAY. Every record
 # below (Squarespace A, www CNAME, Google Workspace MX, SPF/verification TXT,
@@ -135,6 +150,9 @@ resource "google_dns_managed_zone" "tylerdorland_com" {
   description = "tylerdorland.com (Squarespace site + Workspace mail + higgs bridge). Terraform-managed; see infra/dns-cutover.md."
 
   # DNSSEC intentionally OFF (see airportbar zone note).
+
+  # Gate zone creation on the DNS API being enabled (self-contained apply).
+  depends_on = [google_project_service.dns]
 }
 
 # Apex A -> Squarespace site frontend. MUST keep serving.
