@@ -33,7 +33,8 @@ publicly invokable.
    (docs/stack-devops.md: "local now, Cloud SQL at Phase 3"). Until it is a
    database on the `platform-pg` instance with a least-privilege user, DB-backed
    endpoints are not live (the service still boots; `/healthz` is static). This
-   is out of scope for task #29 — tracked as a follow-up.
+   is out of scope for task #29 — delivered by task #39, runbook
+   `infra/cc-phase3-state-migration.md`.
 2. **IAP-fronted external HTTPS load balancer (the ingress fronting).** See
    "Fronting" below — proposed as a sequenced follow-up PR because it introduces
    two new GCP services (Cloud Load Balancing, IAP) and depends on an OAuth
