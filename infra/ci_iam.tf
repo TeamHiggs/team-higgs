@@ -48,11 +48,11 @@ locals {
   github_ci_member = data.google_service_account.github_ci.member
 }
 
-# roles/run.admin — manages BOTH Cloud Run v2 services (plant-log, higgs-command),
-# their custom-domain mappings, and their IAM policy bindings (public invoke).
-# The existing scoped run.developer cannot create services, create domain
-# mappings, or setIamPolicy on a service; run.admin is the minimum predefined
-# role that covers all three across the two services.
+# roles/run.admin — manages the Cloud Run v2 services (plant-log, command-center),
+# their custom-domain mappings, and their IAM policy bindings (invoke). The
+# existing scoped run.developer cannot create services, create domain mappings,
+# or setIamPolicy on a service; run.admin is the minimum predefined role that
+# covers all three across the services.
 resource "google_project_iam_member" "github_ci_run_admin" {
   project = var.project_id
   role    = "roles/run.admin"
