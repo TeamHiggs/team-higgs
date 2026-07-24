@@ -39,10 +39,6 @@ google_redirect_uri = "https://airportbar.app/api/auth/callback"
 # Apex canonical host: activates the www->apex 301 in the plant-log backend.
 canonical_host = "airportbar.app"
 
-# higgs-command placeholder image (disposable hello page; image changes are
-# ignored by lifecycle, so this only matters on first create).
-higgs_command_image = "us-docker.pkg.dev/cloudrun/container/hello"
-
 # Command center (command_center.tf) — ENABLED (task #37). Flipping this from
 # false to true un-gates every command_center.tf resource (count 0 -> 1): the
 # gated Cloud Run service, its least-privilege runtime SA, its four Secret Manager
