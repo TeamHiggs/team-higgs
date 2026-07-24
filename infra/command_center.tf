@@ -336,6 +336,20 @@ resource "google_cloud_run_v2_service" "command_center" {
   ]
 }
 
+# =============================================================================
+# INVARIANT (platform risk #3, decision recorded via `emctl decision add`):
+#   The command-center service must NEVER receive `allUsers` or any broad
+#   `roles/run.invoker` binding. Reachability is ONLY via the IAP-fronted
+#   external HTTPS load balancer — the sole run.invoker principal is the IAP
+#   service agent (command_center_lb.tf::command_center_iap_invoker), granted
+#   resource-scoped to THIS service. This service can merge PRs; a stray public
+#   invoke binding is a critical exposure, not a convenience.
+#
+#   Do not add a google_cloud_run_v2_service_iam_member for allUsers /
+#   allAuthenticatedUsers / a group / a project-level role here or anywhere. Any
+#   plan that introduces one is a security blocker — stop and file a question.
+# =============================================================================
+#
 # DELIBERATELY ABSENT: there is NO google_cloud_run_v2_service_iam_member granting
 # roles/run.invoker to allUsers (or anyone) on this service. That absence is the
 # point (platform risk #3). Invoke permission is granted narrowly to the load
