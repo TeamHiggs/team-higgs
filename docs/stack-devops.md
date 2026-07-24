@@ -42,6 +42,21 @@ system and are treated as drift.
 
 **Docs publishing: MkDocs → GitHub Pages.** No cloud dependency.
 
+**Edge & access: Cloud Load Balancing + Identity-Aware Proxy (IAP).**
+Adopted by the command-center reachability epic (#33) to make the one
+deployed surface that can merge PRs reachable *only* through a
+Google-managed front door — never openly invokable. The command-center
+Cloud Run service runs ingress `INTERNAL_LOAD_BALANCER` with its sole
+invoker the IAP service agent (never `allUsers`); a global external HTTPS
+Application Load Balancer fronts it — static anycast IP → target HTTPS
+proxy terminating a Google-managed cert for `higgs.tylerdorland.com` → URL
+map → backend service with IAP enabled → serverless NEG → Cloud Run. IAP
+authenticates the user at the edge and enforces
+`roles/iap.httpsResourceAccessor` (Tyler only); the app's own Google OIDC
+stays on behind it as defence-in-depth. Justification: emctl decision #24
+(command-center reachability, Option A). Standing cost: an external HTTPS
+LB carries a ~$18–25/mo baseline even at zero traffic.
+
 ## Compute and billing — dual-path (while Tyler is the sole user)
 
 The platform runs on Tyler's Claude **subscription**, not API billing, for as
@@ -99,6 +114,33 @@ independently of the API-billing question.
 - Every workflow declares a least-privilege `permissions:` block.
 - Workflow changes ship in isolated PRs (see implementer-devops) and
   always receive security review.
+
+## Security invariant: the command-center gate rests on WIF ref-scoping, not IAM
+
+The command-center service can merge PRs, so the integrity of its IAP gate
+is a platform-critical invariant. PR #38's security review surfaced that
+this gate does **not** currently rest on IAP IAM role scoping. `github-ci`
+holds `roles/resourcemanager.projectIamAdmin` — an escalation-complete
+grant: CI can rewrite any IAM binding in the project, the IAP allowlist
+included. What actually keeps the gate closed today is repo-level controls,
+not IAM — and the load-bearing one is WIF ref-scoping:
+
+- **WIF main-ref scoping** (`infra/wif.tf`) — the enforced control. CI's
+  short-lived GCP credentials are issued only for `refs/heads/main`, so
+  nothing off a feature branch can apply infrastructure (verified in
+  `wif.tf`).
+- **team-higgs `main` merge control** — only Tyler (org admin) can merge
+  to `main`. This leg is weaker than it looks: the configured review is
+  org-admin-bypassable and no required status checks gate merge today, so
+  review is not itself a hard gate. Closing that branch-protection-
+  enforcement gap (adding required status checks) is tracked by task #41.
+
+Forward-looking rule: **until the `projectIamAdmin` grant is narrowed,
+every infra change must preserve WIF main-ref-scoping (and Tyler-only
+merge) as the real gate.** Do not introduce any path that applies
+infrastructure outside a merged-to-`main` change. Narrowing the CI grant is
+tracked by task #40; closing the branch-protection-enforcement gap
+(required status checks) by task #41.
 
 ## Day zero (Tyler, once, by hand)
 
